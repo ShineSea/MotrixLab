@@ -1,0 +1,1 @@
+uv run ./scripts/play.py --env franka_lift_cube  --num-envs 20
