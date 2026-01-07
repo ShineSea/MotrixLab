@@ -89,9 +89,12 @@ class NpEnv(ABEnv):
         """
         Create a new environment state
         """
+        #!! observation_space是一维的时候这个代码才是对的
         obs = np.zeros((self._num_envs, self.observation_space.shape[0]), dtype=np.float32)
         reward = np.zeros((self._num_envs,), dtype=np.float32)
+        # 初始任务逻辑结束 
         terminated = np.ones((self._num_envs,), dtype=bool)
+
         truncated = np.zeros((self._num_envs,), dtype=bool)
         info = {"steps": np.zeros((self._num_envs,), dtype=np.uint64)}
         data = mtx.SceneData(self._model, batch=[self._num_envs])
@@ -107,10 +110,12 @@ class NpEnv(ABEnv):
         state = self._state
         done = state.done
         assert done.shape == (self._num_envs,)
+        # 如果所有环境都没结束，则直接返回
         if not np.any(done):
             return
-
+        # 将任务 结束的环境步数置0
         np.putmask(state.info["steps"], done, 0)
+        # 取出任务结束的环境数据 
         data = state.data[done]
         obs, info1 = self.reset(data)
         state.obs[done] = obs

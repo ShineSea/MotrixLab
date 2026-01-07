@@ -45,87 +45,107 @@ class AnymalCEnv(NpEnv):
             self._desired_arrow_body = None
     
         self._action_space = gym.spaces.Box(low = -1.0, high = 1.0, shape = (12,), dtype = np.float32)
-        # 观测空间：linvel(3) + gyro(3) + gravity(3) + joint_pos(12) + joint_vel(12) + last_actions(12) + commands(3) + position_error(2) + heading_error(1) + distance(1) + reached_flag(1) + stop_ready_flag(1) = 54
-        self._observation_space = gym.spaces.Box(low = -np.inf, high = np.inf, shape = (54,), dtype = np.float32)
-        self._num_dof_pos = self._model.num_dof_pos
-        self._num_dof_vel = self._model.num_dof_vel
-        self._num_action = self._model.num_actuators
 
-        self._init_dof_pos = self._model.compute_init_dof_pos()
-        self._init_dof_vel = np.zeros(
-            (self._model.num_dof_vel,),
-            dtype=np.float32,
-        )
-        
-        # 查找target_marker的DOF索引并更新_init_dof_pos
-        self._find_target_marker_dof_indices()
-        
-        # 查找箭头的DOF索引（如果箭头body存在）
-        if self._robot_arrow_body is not None and self._desired_arrow_body is not None:
-            self._find_arrow_dof_indices()
-
-        self._init_buffer()
-    
-    def _init_buffer(self):
-        cfg = self._cfg
-        self.default_angles = np.zeros(self._num_action, dtype = np.float32)
-        # PD参数由XML中的kp和kv控制
-        
         # 归一化系数
         self.commands_scale = np.array(
             [cfg.normalization.lin_vel, cfg.normalization.lin_vel, cfg.normalization.ang_vel],
             dtype=np.float32
         )
+        # 观测空间：linvel(3) + gyro(3) + gravity(3) + joint_pos(12) + joint_vel(12) + last_actions(12) + commands(3) + position_error(2) + heading_error(1) + distance(1) + reached_flag(1) + stop_ready_flag(1) = 54
+        '''
+        linvel (3)：线性速度 (3)
+        解释：表示机器人的三维线性速度，通常包括 X、Y 和 Z 轴的速度分量。
 
-        # 设置默认关节角度
-        for i in range(self._model.num_actuators):
-            for name, angle in cfg.init_state.default_joint_angles.items():
-                if name in self._model.actuator_names[i]:
-                    self.default_angles[i] = angle
+        gyro (3)：陀螺仪 (3)
+        解释：表示机器人的旋转速度，通常包括绕 X、Y 和 Z 轴的角速度分量。
 
-        self._init_dof_pos[-self._num_action:] = self.default_angles
+        gravity (3)：重力 (3)
+        解释：表示机器人的重力方向，通常用于描述重力的三维分量，通常为三个值：沿着 X、Y 和 Z 轴的重力分量。
+
+        joint_pos (12)：关节位置 (12)
+        解释：表示机器人的 12 个关节的位置，通常用于描述机器人的每个关节的角度或位置。
+
+        joint_vel (12)：关节速度 (12)
+        解释：表示机器人的 12 个关节的速度，通常用于描述每个关节的角速度或线速度。
+
+        last_actions (12)：上一次动作 (12)
+        解释：表示机器人上一次执行的 12 个动作，通常用于控制系统中记录先前的控制命令。
+
+        commands (3)：指令 (3)
+        解释：表示机器人接收到的控制指令，通常是三维的，可以代表机器人的目标位置、速度或其他参数。
+
+        position_error (2)：位置误差 (2)
+        解释：表示机器人的位置误差，通常包括 X 和 Y 轴上的误差，或与目标位置的偏差。
+
+        heading_error (1)：航向误差 (1)
+        解释：表示机器人的航向误差，通常表示机器人的朝向与目标航向之间的偏差。
+
+        distance (1)：距离 (1)
+        解释：表示机器人到目标的距离，通常用于导航或路径规划任务中。
+
+        reached_flag (1)：到达标志 (1)
+        解释：表示机器人是否到达了目标位置，通常是一个布尔值（0 或 1）。
+
+        stop_ready_flag (1)：停止准备标志 (1)
+        解释：表示机器人是否准备好停止，通常是一个布尔值（0 或 1）。
+        '''
+        self._observation_space = gym.spaces.Box(low = -np.inf, high = np.inf, shape = (54,), dtype = np.float32)
+        self._num_dof_pos = self._model.num_dof_pos
+        self._num_dof_vel = self._model.num_dof_vel
+        self._num_action = self._model.num_actuators
+
+        self._setup_init_dof_pos = self._model.compute_init_dof_pos()
+        self._init_dof_vel = np.zeros(
+            (self._model.num_dof_vel,),
+            dtype=np.float32,
+        ) 
+        self._setup_init_dof_pos()
     
-    def _find_target_marker_dof_indices(self):
-        """查找target_marker在dof_pos中的索引位置"""
-        # 新的DOF结构：
-        # DOF 0-2: target_marker (slide x, slide y, hinge yaw)
-        # DOF 3-5: base position (x, y, z)
-        # DOF 6-9: base quaternion (qx, qy, qz, qw) - Motrix引擎格式
-        # DOF 10+: joint angles (12个关节)
-        self._target_marker_dof_start = 0
-        self._target_marker_dof_end = 3
-        
-        # 设置target_marker的初始位置为原点，朝向为0
-        self._init_dof_pos[0:3] = [0.0, 0.0, 0.0]  # [x, y, yaw]
-        
-        # base的四元数索引
-        self._base_quat_start = 6
-        self._base_quat_end = 10
-    
-    def _find_arrow_dof_indices(self):
-        """查找箭头在dof_pos中的索引位置"""
-        # DOF结构：
+    def _setup_init_dof_pos(self):
+         # DOF结构：
         # DOF 0-2: target_marker (3个: slide x, slide y, hinge yaw)
         # DOF 3-5: base position (3个)
         # DOF 6-9: base quaternion (4个)
         # DOF 10-21: joint angles (12个)
         # DOF 22-28: robot_heading_arrow freejoint (7个: 3 pos + 4 quat)
         # DOF 29-35: desired_heading_arrow freejoint (7个: 3 pos + 4 quat)
-        
-        # robot_heading_arrow的DOF索引
+        self._target_marker_dof_start = 0
+        self._target_marker_dof_end = 3
+        # base的四元数索引
+        self._base_quat_dof_start = 6
+        self._base_quat_dof_end = 10
+
+        #关节角的索引
+        self._joint_angle_dof_start=10
+        self._joint_angle_dof_end=22
+
+         # robot_heading_arrow的DOF索引
         self._robot_arrow_dof_start = 22
         self._robot_arrow_dof_end = 29
         
         # desired_heading_arrow的DOF索引
         self._desired_arrow_dof_start = 29
         self._desired_arrow_dof_end = 36
-        
+
+        # 设置与目标位置的初始偏移
+        self._init_dof_pos[self._target_marker_dof_start:self._target_marker_dof_end] = [0.0, 0.0, 0.0]  # [x, y, yaw]
+
         # 设置箭头的初始位置和姿态: [x, y, z, qx, qy, qz, qw]
         if self._robot_arrow_dof_end <= len(self._init_dof_pos):
             self._init_dof_pos[self._robot_arrow_dof_start:self._robot_arrow_dof_end] = [0.0, 0.0, 0.76, 0.0, 0.0, 0.0, 1.0]
             
         if self._desired_arrow_dof_end <= len(self._init_dof_pos):
             self._init_dof_pos[self._desired_arrow_dof_start:self._desired_arrow_dof_end] = [0.0, 0.0, 0.76, 0.0, 0.0, 0.0, 1.0]
+
+        # 设置默认关节角度
+        cfg = self._cfg
+        self.default_angles = np.zeros(self._num_action, dtype = np.float32)
+        for i in range(self._model.num_actuators):
+            for name, angle in cfg.init_state.default_joint_angles.items():
+                if name in self._model.actuator_names[i]:
+                    self.default_angles[i] = angle
+        self._init_dof_pos[self._joint_angle_dof_start: self._joint_angle_dof_end] = self.default_angles
+    
 
     def _init_contact_geometry(self):
         """初始化接触检测所需的几何体索引"""
@@ -221,9 +241,6 @@ class AnymalCEnv(NpEnv):
         # 保存当前action用于增量控制
         if "current_action" not in state.info:
             state.info["current_actions"] = np.zeros_like(actions)
-        # 保存当前action用于增量控制
-        if "current_action" not in state.info:
-            state.info["current_actions"] = np.zeros_like(actions)
         state.info['last_actions'] = state.info['current_actions']
         state.info['current_actions'] = actions
         
@@ -244,134 +261,18 @@ class AnymalCEnv(NpEnv):
     def update_state(self, state:NpEnvState):
         data = state.data
 
-        # 获取根节点状态
-        root_pos, root_quat, root_vel = self._extract_root_state(data)
-
-        # 关节状态（腿部关节）
-        joint_pos = self.get_dof_pos(data)        # [num_envs, 12]
-        joint_vel = self.get_dof_vel(data)        # [num_envs, 12]
-        joint_pos_rel = joint_pos - self.default_angles
-
-        # 获取传感器数据
-        base_lin_vel = root_vel[:, :3]
-        gyro = self._model.get_sensor_value(self._cfg.sensor.base_gyro, data)
-        projected_gravity = self._compute_projected_gravity(root_quat)
-        
-        # 获取命令 - 转换为相对速度命令
         pose_commands = state.info["pose_commands"]
-        robot_position = root_pos[:, :2]
-        robot_heading = self._get_heading_from_quat(root_quat)
-        target_position = pose_commands[:, :2]
-        target_heading = pose_commands[:, 2]
-        
-        # 计算期望速度（基于位置误差）
-        position_error = target_position - robot_position
-        distance_to_target = np.linalg.norm(position_error, axis=1)
-
-        position_threshold = 0.3
-        reached_position = distance_to_target < position_threshold
-
-        desired_vel_xy = np.clip(position_error * 1.0, -1.0, 1.0)  # 简单P控制器
-        desired_vel_xy = np.where(reached_position[:, np.newaxis], 0.0, desired_vel_xy)  # 到达后速度为0
-
-        # 计算期望角速度（基于朝向误差）
-        heading_diff = target_heading - robot_heading
-        heading_diff = np.where(heading_diff > np.pi, heading_diff - 2*np.pi, heading_diff)
-        heading_diff = np.where(heading_diff < -np.pi, heading_diff + 2*np.pi, heading_diff)
-        heading_threshold = np.deg2rad(15) 
-        reached_heading = np.abs(heading_diff) < heading_threshold
-
-        reached_all = np.logical_and(reached_position, reached_heading)
-
-        # 角速度命令计算 + 死区
-        desired_yaw_rate = np.clip(heading_diff * 1.0, -1.0, 1.0)
-        deadband_yaw = np.deg2rad(8)
-        desired_yaw_rate = np.where(np.abs(heading_diff) < deadband_yaw, 0.0, desired_yaw_rate)
-
-        # 到达后归零
-        desired_yaw_rate = np.where(reached_all, 0.0, desired_yaw_rate)
-        desired_vel_xy = np.where(reached_all[:, np.newaxis], 0.0, desired_vel_xy)
-        
-
-        
-        # 组合为速度命令
-        velocity_commands = np.concatenate(
-            [desired_vel_xy, desired_yaw_rate[:, np.newaxis]], axis=-1
-        )
-        
-        # 归一化观测
-        noisy_linvel = base_lin_vel * self._cfg.normalization.lin_vel
-        noisy_gyro = gyro * self._cfg.normalization.ang_vel
-        noisy_joint_angle = joint_pos_rel * self._cfg.normalization.dof_pos
-        noisy_joint_vel = joint_vel * self._cfg.normalization.dof_vel
-        command_normalized = velocity_commands * self.commands_scale
-        last_actions = state.info["current_actions"]
-        
-        # 计算任务相关观测
-        position_error_normalized = position_error / 5.0  # 归一化到合理范围
-        heading_error_normalized = heading_diff / np.pi  # 归一化到[-1, 1]
-        distance_normalized = np.clip(distance_to_target / 5.0, 0, 1)  # 归一化距离
-        reached_flag = reached_all.astype(np.float32)  # 是否到达目标
-        
-        # 计算是否达到zero_ang标准：到达且角速度接近零
-        stop_ready = np.logical_and(
-            reached_all,
-            np.abs(gyro[:, 2]) < 5e-2
-        )
-        stop_ready_flag = stop_ready.astype(np.float32)
-        
-        obs = np.concatenate(
-            [
-                noisy_linvel,       # 3
-                noisy_gyro,         # 3
-                projected_gravity,  # 3
-                noisy_joint_angle,  # 12
-                noisy_joint_vel,    # 12
-                last_actions,       # 12
-                command_normalized, # 3
-                position_error_normalized,  # 2 - 到目标的位置误差向量
-                heading_error_normalized[:, np.newaxis],  # 1 - 朝向误差
-                distance_normalized[:, np.newaxis],  # 1 - 到目标的距离
-                reached_flag[:, np.newaxis],  # 1 - 是否已到达
-                stop_ready_flag[:, np.newaxis],  # 1 - 是否达到停止标准
-            ],
-            axis=-1,
-        )
-        assert obs.shape == (data.shape[0], 54)
-        
-        # 更新目标位置标记
-        self._update_target_marker(data, pose_commands)
-        # 更新箭头可视化（不影响物理）
-        base_lin_vel_xy = base_lin_vel[:, :2]
-        self._update_heading_arrows(data, root_pos, desired_vel_xy, base_lin_vel_xy)
+        obs = self._compute_obs(state.data,pose_commands,0.3,np.deg2rad(15),state.info["current_actions"])
         
         # 计算奖励
-        reward = self._compute_reward(data, state.info, velocity_commands)
-
+        reward = self._compute_reward(data, state)
         # 计算终止条件
         terminated_state = self._compute_terminated(state)
         terminated = terminated_state.terminated
         
         state.obs = obs
         state.reward = reward
-        state.terminated = terminated
-        
-        # 调试打印（每200步一次）
-        state.info["steps"] = state.info.get("steps", np.zeros(self._num_envs, dtype=np.int32)) + 1
-        if state.info["steps"][0] % 200 == 0:
-            robot_position = root_pos[:, :2]
-            robot_heading = self._get_heading_from_quat(root_quat)
-            target_position = pose_commands[:, :2]
-            target_heading = pose_commands[:, 2]
-            position_error = np.linalg.norm(target_position - robot_position, axis=1)
-            heading_diff = target_heading - robot_heading
-            heading_diff = np.where(heading_diff > np.pi, heading_diff - 2*np.pi, heading_diff)
-            heading_diff = np.where(heading_diff < -np.pi, heading_diff + 2*np.pi, heading_diff)
-            mean_pos_err = np.mean(position_error)
-            mean_heading_err = np.rad2deg(np.mean(np.abs(heading_diff)))
-            mean_vel = np.mean(np.linalg.norm(base_lin_vel[:, :2], axis=1))
-
-        
+        state.terminated = terminated     
         return state
 
     def _get_heading_from_quat(self, quat:np.ndarray) -> np.ndarray:
@@ -472,11 +373,13 @@ class AnymalCEnv(NpEnv):
         
         return np.array([qx, qy, qz, qw], dtype=np.float32)
     
-    def _compute_reward(self, data: mtx.SceneData, info: dict, velocity_commands: np.ndarray) -> np.ndarray:
+    def _compute_reward(self, state:NpEnvState) -> np.ndarray:
         """
         速度跟踪奖励机制
         velocity_commands: [num_envs, 3] - (vx, vy, vyaw)
         """
+        data = state.data
+        info = state.info
         # 计算终止条件惩罚
         termination_penalty = np.zeros(self._num_envs, dtype=np.float32)
         
@@ -504,6 +407,8 @@ class AnymalCEnv(NpEnv):
         side_flip_mask = tilt_angle > np.deg2rad(75)
         termination_penalty = np.where(side_flip_mask, -20.0, termination_penalty)
         
+        desired_vel_xy,desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(0.3,np.deg2rad(15))
+
         # 线速度跟踪奖励
         base_lin_vel = self._model.get_sensor_value(self._cfg.sensor.base_linvel, data)
         lin_vel_error = np.sum(np.square(velocity_commands[:, :2] - base_lin_vel[:, :2]), axis=1)
@@ -514,36 +419,18 @@ class AnymalCEnv(NpEnv):
         ang_vel_error = np.square(velocity_commands[:, 2] - gyro[:, 2])
         tracking_ang_vel = np.exp(-ang_vel_error / 0.25)
         
-        # 获取机器人位置和朝向用于到达判定
-        robot_position = pose[:, :2]
-        robot_heading = self._get_heading_from_quat(root_quat)
-        target_position = info["pose_commands"][:, :2]
-        target_heading = info["pose_commands"][:, 2]
-        position_error = target_position - robot_position
-        distance_to_target = np.linalg.norm(position_error, axis=1)
-        heading_diff = target_heading - robot_heading
-        heading_diff = np.where(heading_diff > np.pi, heading_diff - 2*np.pi, heading_diff)
-        heading_diff = np.where(heading_diff < -np.pi, heading_diff + 2*np.pi, heading_diff)
-        
-        position_threshold = 0.3
-        reached_position = distance_to_target < position_threshold
-        
-        heading_threshold = np.deg2rad(15)
-        reached_heading = np.abs(heading_diff) < heading_threshold
-        reached_all = np.logical_and(reached_position, reached_heading)
-        
         # 首次到达位置的一次性奖励
         info["ever_reached"] = info.get("ever_reached", np.zeros(self._num_envs, dtype=bool))
-        first_time_reach = np.logical_and(reached_all, ~info["ever_reached"])
-        info["ever_reached"] = np.logical_or(info["ever_reached"], reached_all)
+        first_time_reach = np.logical_and(self.reached_all, ~info["ever_reached"])
+        info["ever_reached"] = np.logical_or(info["ever_reached"], self.reached_all)
         arrival_bonus = np.where(first_time_reach, 10.0, 0.0)
         
         # 距离接近奖励：激励靠近目标
         # 使用历史最近距离来计算进步
         if "min_distance" not in info:
-            info["min_distance"] = distance_to_target.copy()
-        distance_improvement = info["min_distance"] - distance_to_target
-        info["min_distance"] = np.minimum(info["min_distance"], distance_to_target)
+            info["min_distance"] = self.distance_to_target.copy()
+        distance_improvement = info["min_distance"] - self.distance_to_target
+        info["min_distance"] = np.minimum(info["min_distance"], self.distance_to_target)
         approach_reward = np.clip(distance_improvement * 4.0, -1.0, 1.0)  # 每接近1米奖励5分
         
         # 姿态稳定性奖励（惩罚偏离正常站立姿态）
@@ -554,9 +441,9 @@ class AnymalCEnv(NpEnv):
         # 到达与停止判定（奖励加成）
         speed_xy = np.linalg.norm(base_lin_vel[:, :2], axis=1)
         zero_ang_mask = np.abs(gyro[:, 2]) < 0.05  # 放宽到0.05 rad/s ≈ 2.86°/s
-        zero_ang_bonus = np.where(np.logical_and(reached_all, zero_ang_mask), 6.0, 0.0)
+        zero_ang_bonus = np.where(np.logical_and(self.reached_all, zero_ang_mask), 6.0, 0.0)
         stop_base = 2 * (0.8 * np.exp(- (speed_xy / 0.2)**2) + 1.2 * np.exp(- (np.abs(gyro[:, 2]) / 0.1)**4))
-        stop_bonus = np.where(reached_all, stop_base + zero_ang_bonus, 0.0)
+        stop_bonus = np.where(self.reached_all, stop_base + zero_ang_bonus, 0.0)
         
         # Z轴线速度惩罚
         lin_vel_z_penalty = np.square(base_lin_vel[:, 2])
@@ -578,7 +465,7 @@ class AnymalCEnv(NpEnv):
         # 综合奖励
         # 到达后：停止所有正向奖励，只保留停止奖励和惩罚项
         reward = np.where(
-            reached_all,
+            self.reached_all,
             # 到达后：只有停止奖励和惩罚
             (
                 stop_bonus
@@ -605,27 +492,6 @@ class AnymalCEnv(NpEnv):
                 + termination_penalty  # 终止条件惩罚
             )
         )
-        
-        # 调试打印：到达一次性奖励、停止奖励、零角奖励、角速度
-        try:
-            arrival_count = int((arrival_bonus > 0).sum())
-            stop_count = int((stop_bonus > 0).sum())
-            zero_ang_count = int((zero_ang_bonus > 0).sum())
-            gyro_z_mean = float(np.mean(abs(gyro[:, 2])))
-            total_envs = self._num_envs
-            
-            # 额外统计：环境状态分布
-            reached_pos_count = int(reached_position.sum())
-            reached_head_count = int(reached_heading.sum())
-            dist_mean = float(np.mean(distance_to_target))
-            heading_err_mean = float(np.rad2deg(np.mean(np.abs(heading_diff))))
-            
-            # print(f"[reward_debug] arrival={arrival_count}/{total_envs} stop={stop_count}/{total_envs} zero_ang={zero_ang_count}/{total_envs}")
-            # print(f"[position] reached_pos={reached_pos_count}/{total_envs} dist_mean={dist_mean:.2f}m")
-            # print(f"[heading] reached_head={reached_head_count}/{total_envs} heading_err_mean={heading_err_mean:.1f}°")
-            # print(f"[velocity] gyro_z_mean={gyro_z_mean:.4f} rad/s")
-        except Exception:
-            pass
         return reward
     
     def _update_target_marker(self, data: mtx.SceneData, pose_commands: np.ndarray):
@@ -780,12 +646,12 @@ class AnymalCEnv(NpEnv):
         # 归一化base的四元数（DOF 6-9）
         # 新的DOF结构：target_marker占0-2, base_pos占3-5, base_quat占6-9
         for env_idx in range(num_envs):
-            quat = dof_pos[env_idx, self._base_quat_start:self._base_quat_end]  # [qx, qy, qz, qw]
-            quat_norm = np.linalg.norm(quat)
+            quat = dof_pos[env_idx, self._base_quat_dof_start:self._base_quat_dof_end]  # [qx, qy, qz, qw]
+            quat_norm = np.linalg.norm(quat) # 返回 sqrt(q0^2 + q1^2 + q2^2 + q3^2)
             if quat_norm > 1e-6:  # 避免除以零
-                dof_pos[env_idx, self._base_quat_start:self._base_quat_end] = quat / quat_norm
+                dof_pos[env_idx, self._base_quat_dof_start:self._base_quat_dof_end] = quat / quat_norm
             else:
-                dof_pos[env_idx, self._base_quat_start:self._base_quat_end] = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)  # 默认单位四元数
+                dof_pos[env_idx, self._base_quat_dof_start:self._base_quat_dof_end] = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)  # 默认单位四元数
             
             # 归一化箭头的四元数（如果箭头body存在）
             if self._robot_arrow_body is not None:
@@ -810,9 +676,30 @@ class AnymalCEnv(NpEnv):
         data.set_dof_pos(dof_pos, self._model)
         self._model.forward_kinematic(data)
         
-        # 更新目标位置标记
-        self._update_target_marker(data, pose_commands)
+        obs=self._compute_obs(data,pose_commands)
+        
+        root_pos, root_quat, root_vel = self._extract_root_state(data)
+        robot_position = root_pos[:, :2]
+        target_position = pose_commands[:, :2]
+        position_error = target_position - robot_position
+        distance_to_target = np.linalg.norm(position_error, axis=1)  # [num_envs]
+        info = {
+            "pose_commands": pose_commands,
+            "last_actions": np.zeros((num_envs, self._num_action), dtype=np.float32),
+            "steps": np.zeros(num_envs, dtype=np.int32),
+            "current_actions": np.zeros((num_envs, self._num_action), dtype=np.float32),
+            "ever_reached": np.zeros(num_envs, dtype=bool),
+            "min_distance": distance_to_target.copy(),  # 初始化最小距离
+        }
 
+        return obs,info
+      
+       
+
+    def _compute_obs(self,data: mtx.SceneData, pose_commands: np.ndarray,position_threshold=0.1,heading_threshold = np.deg2rad(15),last_actions:np.ndarray=None)-> np.ndarray:
+        num_envs = data.shape[0]
+        if last_actions is None:
+            last_actions = np.zeros((num_envs, self._num_action), dtype=np.float32)
         # 获取根节点状态
         root_pos, root_quat, root_vel = self._extract_root_state(data)
 
@@ -826,66 +713,31 @@ class AnymalCEnv(NpEnv):
         gyro = self._model.get_sensor_value(self._cfg.sensor.base_gyro, data)
         projected_gravity = self._compute_projected_gravity(root_quat)
         
-        # 计算速度命令（与update_state一致）
-        robot_position = root_pos[:, :2]
-        robot_heading = self._get_heading_from_quat(root_quat)
-        target_position = pose_commands[:, :2]
-        target_heading = pose_commands[:, 2]
-        
-        position_error = target_position - robot_position
-        distance_to_target = np.linalg.norm(position_error, axis=1)  # [num_envs]
+        self._compute_commands(data,pose_commands)
 
-        # 位置阈值：0.1米内认为到达
-        position_threshold = 0.1
-        reached_position = distance_to_target < position_threshold  # [num_envs]
-        
-        desired_vel_xy = np.clip(position_error * 1.0, -1.0, 1.0)
-        desired_vel_xy = np.where(reached_position[:, np.newaxis], 0.0, desired_vel_xy)  # 到达后速度为0
-
-        # 实际线速度 XY
-        base_lin_vel_xy = base_lin_vel[:, :2]
-
+        desired_vel_xy,desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(position_threshold,heading_threshold)
+         # 更新目标位置标记
+        self._update_target_marker(data, pose_commands)
         # 更新箭头可视化（不影响物理）
+        base_lin_vel_xy = base_lin_vel[:, :2]
         self._update_heading_arrows(data, root_pos, desired_vel_xy, base_lin_vel_xy)
         
-        heading_diff = target_heading - robot_heading
-        heading_diff = np.where(heading_diff > np.pi, heading_diff - 2*np.pi, heading_diff)
-        heading_diff = np.where(heading_diff < -np.pi, heading_diff + 2*np.pi, heading_diff)
-        
-        # 朝向阈值：15度内认为到达
-        heading_threshold = np.deg2rad(15)
-        reached_heading = np.abs(heading_diff) < heading_threshold  # [num_envs]
-        
-        desired_yaw_rate = np.clip(heading_diff * 1.0, -1.0, 1.0)
-        reached_all = np.logical_and(reached_position, reached_heading)
-        desired_yaw_rate = np.where(reached_all, 0.0, desired_yaw_rate)  # 到达后觗速度为0
-        desired_vel_xy = np.where(reached_all[:, np.newaxis], 0.0, desired_vel_xy)  # 到达后速度为0
-        
-        # 确保 desired_yaw_rate 是1维数组
-        if desired_yaw_rate.ndim > 1:
-            desired_yaw_rate = desired_yaw_rate.flatten()
-        
-        velocity_commands = np.concatenate(
-            [desired_vel_xy, desired_yaw_rate[:, np.newaxis]], axis=-1
-        )
-        
-        # 归一化观测（与update_state一致）
+        # 归一化观测（
         noisy_linvel = base_lin_vel * self._cfg.normalization.lin_vel
         noisy_gyro = gyro * self._cfg.normalization.ang_vel
         noisy_joint_angle = joint_pos_rel * self._cfg.normalization.dof_pos
         noisy_joint_vel = joint_vel * self._cfg.normalization.dof_vel
         command_normalized = velocity_commands * self.commands_scale
-        last_actions = np.zeros((num_envs, self._num_action), dtype=np.float32)
         
-        # 计算任务相关观测（与update_state一致）
-        position_error_normalized = position_error / 5.0
-        heading_error_normalized = heading_diff / np.pi
-        distance_normalized = np.clip(distance_to_target / 5.0, 0, 1)
-        reached_flag = reached_all.astype(np.float32)
+        # 计算任务相关观测
+        position_error_normalized = self.position_error / 5.0
+        heading_error_normalized = self.heading_diff / np.pi
+        distance_normalized = np.clip(self.distance_to_target / 5.0, 0, 1)
+        reached_flag = self.reached_all.astype(np.float32)
         
         # 计算是否达到zero_ang标准
         stop_ready = np.logical_and(
-            reached_all,
+            self.reached_all,
             np.abs(gyro[:, 2]) < 5e-2
         )
         stop_ready_flag = stop_ready.astype(np.float32)
@@ -909,17 +761,45 @@ class AnymalCEnv(NpEnv):
         )
         assert obs.shape == (num_envs, 54)
 
+        return obs
 
-        info = {
-            "pose_commands": pose_commands,
-            "last_actions": np.zeros((num_envs, self._num_action), dtype=np.float32),
-            "steps": np.zeros(num_envs, dtype=np.int32),
-            "current_actions": np.zeros((num_envs, self._num_action), dtype=np.float32),
-            "ever_reached": np.zeros(num_envs, dtype=bool),
-            "min_distance": distance_to_target.copy(),  # 初始化最小距离
-        }
+    def _compute_commands(self,data: mtx.SceneData, pose_commands: np.ndarray):
+        # 获取根节点状态
+        root_pos, root_quat, root_vel = self._extract_root_state(data)
+        base_lin_vel = root_vel[:, :3]
+        # 计算速度命令（与update_state一致）
+        robot_position = root_pos[:, :2]
+        robot_heading = self._get_heading_from_quat(root_quat)
+        target_position = pose_commands[:, :2]
+        target_heading = pose_commands[:, 2]
         
-        return obs, info
+        self.position_error = target_position - robot_position
+        self.distance_to_target = np.linalg.norm(self.position_error, axis=1)  # [num_envs]
+        self.desired_vel_xy = np.clip(self.position_error * 1.0, -1.0, 1.0)
 
+        self.heading_diff = target_heading - robot_heading
+        self.heading_diff = np.where(self.heading_diff > np.pi, self.heading_diff - 2*np.pi, self.heading_diff)
+        self.heading_diff = np.where(self.heading_diff < -np.pi, self.heading_diff + 2*np.pi, self.heading_diff)
+        self.desired_yaw_rate = np.clip(self.heading_diff * 1.0, -1.0, 1.0)
+ 
 
+    def _compute_velocity_commands(self,position_threshold=0.1,heading_threshold = np.deg2rad(15)):
+        reached_position = self.distance_to_target < position_threshold  # [num_envs]
+        desired_vel_xy = np.where(reached_position[:, np.newaxis], 0.0, self.desired_vel_xy)  # 到达后速度为0
+        
+        reached_heading = np.abs(self.heading_diff) < heading_threshold  # [num_envs]
+          
+        reached_all = np.logical_and(reached_position, reached_heading)
+        desired_yaw_rate = np.where(reached_all, 0.0, self.desired_yaw_rate)  # 到达后觗速度为0
+        desired_vel_xy = np.where(reached_all[:, np.newaxis], 0.0, desired_vel_xy)  # 到达后速度为0
+        
+        # 确保 desired_yaw_rate 是1维数组
+        if desired_yaw_rate.ndim > 1:
+            desired_yaw_rate = desired_yaw_rate.flatten()
+        
+        velocity_commands = np.concatenate(
+            [desired_vel_xy, desired_yaw_rate[:, np.newaxis]], axis=-1
+        )
+        return desired_vel_xy,desired_vel_xy,reached_all,velocity_commands
 
+        
