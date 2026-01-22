@@ -32,7 +32,22 @@ class basic:
         rollouts: int = 32
         learning_epochs: int = 5
         mini_batches: int = 4
-    
+
+    @rlcfg("bounce_ball")
+    @dataclass
+    class BounceBallPPO(PPOCfg):
+        max_env_steps: int = 50_000_000
+        check_point_interval: int = 5000
+
+        # Override PPO configuration for bounce ball task
+        policy_hidden_layer_sizes: tuple[int, ...] = (512, 512, 512)
+        value_hidden_layer_sizes: tuple[int, ...] = (512, 512, 512)
+        rollouts: int = 128
+        learning_epochs: int = 15
+        mini_batches: int = 16
+        learning_rate: float = 2e-4
+        num_envs: int = 1024
+
     @rlcfg("dm-walker", backend="jax")
     @rlcfg("dm-stander", backend="jax")
     @rlcfg("dm-runner", backend="jax")
@@ -75,41 +90,98 @@ class basic:
         learning_epochs: int = 2
         mini_batches: int = 32
 
-class manipulation:
-    @rlcfg("franka_lift_cube")
+    @rlcfg("dm-cheetah", backend="jax")
     @dataclass
-    class FrankaLiftPPO(PPOCfg):
+    class CheetahPPO(PPOCfg):
         seed: int = 42
-        max_env_steps: int = 4096 * 50000
-        check_point_interval: int = 500
-        share_policy_value_features: bool = True
-        
+        max_env_steps: int = 1024 * 40000
+        num_envs: int = 2048
+
         # Override PPO configuration
-        policy_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
-        value_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+        learning_rate: float = 2e-4
         rollouts: int = 24
-        learning_epochs: int = 8
-        mini_batches: int = 4
-        learning_rate: float = 3e-4
-        learning_rate_scheduler_kl_threshold: float = 0.01
-        entropy_loss_scale: float = 0.001
-        rewards_shaper_scale: float = 0.01
-    @rlcfg("franka_open_cabinet")
-    @dataclass
-    class FrankaOpenCabinetPPO(PPOCfg):
-        seed: int = 42
-        max_env_steps: int = 4096 * 24000
-        check_point_interval: int = 500
-        share_policy_value_features: bool = True
-        
-        # Override PPO configuration
-        # learning_rate: float = 1e-1
+        learning_epochs: int = 4
+        mini_batches: int = 32
         policy_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
         value_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
-        rollouts: int = 16
-        learning_epochs: int = 2
-        mini_batches: int = 8
-        learning_rate: float = 3e-4
+
+    @rlcfg("dm-cheetah", backend="torch")
+    @dataclass
+    class CheetahPPOTorch(PPOCfg):
+        seed: int = 42
+        max_env_steps: int = 1024 * 40000
+        num_envs: int = 2048
+
+        # Override PPO configuration
+        learning_rate: float = 2e-4
+        rollouts: int = 24
+        learning_epochs: int = 4
+        mini_batches: int = 32
+        policy_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+        value_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+
+    @rlcfg("dm-hopper-stand", backend="jax")
+    @rlcfg("dm-hopper-hop", backend="jax")
+    @dataclass
+    class HopperPPO(PPOCfg):
+        seed: int = 42
+        max_env_steps: int = 1024 * 40000
+        num_envs: int = 2048
+
+        # Override PPO configuration
+        learning_rate: float = 2e-4
+        rollouts: int = 24
+        learning_epochs: int = 5
+        mini_batches: int = 32
+        policy_hidden_layer_sizes: tuple[int, ...] = (32, 32, 32)
+        value_hidden_layer_sizes: tuple[int, ...] = (32, 32, 32)
+
+    @rlcfg("dm-hopper-stand", backend="torch")
+    @rlcfg("dm-hopper-hop", backend="torch")
+    @dataclass
+    class HopperPPOTorch(PPOCfg):
+        seed: int = 42
+        max_env_steps: int = 1024 * 40000
+        num_envs: int = 2048
+
+        # Override PPO configuration
+        learning_rate: float = 2e-4
+        rollouts: int = 24
+        learning_epochs: int = 5
+        mini_batches: int = 32
+        policy_hidden_layer_sizes: tuple[int, ...] = (32, 32, 32)
+        value_hidden_layer_sizes: tuple[int, ...] = (32, 32, 32)
+
+    @rlcfg("dm-reacher", backend="jax")
+    @dataclass
+    class ReacherPPO(PPOCfg):
+        seed: int = 42
+        max_env_steps: int = 1024 * 40000
+        num_envs: int = 2048
+
+        # Override PPO configuration
+        learning_rate: float = 2e-4
+        rollouts: int = 24
+        learning_epochs: int = 4
+        mini_batches: int = 32
+        policy_hidden_layer_sizes: tuple[int, ...] = (32, 32, 32)
+        value_hidden_layer_sizes: tuple[int, ...] = (32, 32, 32)
+
+    @rlcfg("dm-reacher", backend="torch")
+    @dataclass
+    class ReacherPPOTorch(PPOCfg):
+        seed: int = 42
+        max_env_steps: int = 1024 * 40000
+        num_envs: int = 2048
+
+        # Override PPO configuration
+        learning_rate: float = 2e-4
+        rollouts: int = 24
+        learning_epochs: int = 4
+        mini_batches: int = 32
+        policy_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+        value_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+
 
 class locomotion:
     @rlcfg("go1-flat-terrain-walk")
@@ -121,7 +193,7 @@ class locomotion:
 
         seed: int = 42
         share_policy_value_features: bool = False
-        max_env_steps: int = 1024 * 60000
+        max_env_steps: int = 1024 * 60_000
         num_envs: int = 2048
 
         # Override PPO configuration
@@ -132,32 +204,101 @@ class locomotion:
         mini_batches: int = 3
         learning_rate: float = 3e-4
 
+    @rlcfg("go2-flat-terrain-walk")
+    @dataclass
+    class Go2WalkPPO(PPOCfg):
+        """
+        Go2 Walk RL config
+        """
+
+        seed: int = 42
+        share_policy_value_features: bool = False
+        max_env_steps: int = 1024 * 60_000
+        num_envs: int = 2048
+
+        # Override PPO configuration
+        rollouts: int = 24
+        policy_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+        value_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+        learning_epochs: int = 5
+        mini_batches: int = 3
+        learning_rate: float = 3e-4
+
+    @rlcfg("go1-rough-terrain-walk")
+    @dataclass
+    class Go1WalkRoughPPO(Go1WalkPPO):
+        policy_hidden_layer_sizes: tuple[int, ...] = (512, 256, 128)
+        value_hidden_layer_sizes: tuple[int, ...] = (512, 256, 128)
+
+    @rlcfg("go1-stairs-terrain-walk")
+    @dataclass
+    class Go1WalkStairsPPO(Go1WalkRoughPPO): ...
+
+
+class manipulation:
+    @rlcfg("franka-lift-cube")
+    @dataclass
+    class FrankaLiftPPO(PPOCfg):
+        seed: int = 42
+        max_env_steps: int = 4096 * 50000
+        check_point_interval: int = 500
+        share_policy_value_features: bool = True
+
+        # Override PPO configuration
+        policy_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+        value_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+        rollouts: int = 24
+        learning_epochs: int = 8
+        mini_batches: int = 4
+        learning_rate: float = 3e-4
+        learning_rate_scheduler_kl_threshold: float = 0.01
+        entropy_loss_scale: float = 0.001
+        rewards_shaper_scale: float = 0.01
+
+    @rlcfg("franka-open-cabinet")
+    @dataclass
+    class FrankaOpenCabinetPPO(PPOCfg):
+        seed: int = 64
+        max_env_steps: int = 2048 * 24000
+        check_point_interval: int = 500
+        share_policy_value_features: bool = False
+
+        # Override PPO configuration
+        policy_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+        value_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
+        rollouts: int = 16
+        learning_epochs: int = 5
+        mini_batches: int = 32
+        learning_rate: float = 3e-4
+        rewards_shaper_scale: float = 1e-1
+        entropy_loss_scale: float = 0.001
+
+
 class navigation:
     @rlcfg("anymal_c_navigation_flat")
     @dataclass
     class AnymalCPPOConfig(PPOCfg):
+        # ===== Basic Training Parameters =====
+        seed: int = 42  # Random seed
+        num_envs: int = 2048  # Number of parallel environments during training
+        play_num_envs: int = 16  # Number of parallel environments during evaluation
+        max_env_steps: int = 100_000_000  # Maximum training steps
+        check_point_interval: int = 1000  # Checkpoint save interval (save every 100 iterations)
 
-        # ===== 基础训练参数 =====
-        seed: int = 42         # 随机种子
-        num_envs: int = 2048               # 训练时并行环境数量
-        play_num_envs: int = 16            # 评估时并行环境数量
-        max_env_steps: int = 100_000_000   # 最大训练步数
-        check_point_interval: int = 100    # 检查点保存间隔（每100次迭代保存一次）
+        # ===== PPO Algorithm Core Parameters =====
+        learning_rate: float = 3e-4  # Learning rate
+        rollouts: int = 48  # Number of experience replay rollouts
+        learning_epochs: int = 6  # Number of training epochs per update
+        mini_batches: int = 32  # Number of mini-batches
+        discount_factor: float = 0.99  # Discount factor
+        lambda_param: float = 0.95  # GAE parameter
+        grad_norm_clip: float = 1.0  # Gradient clipping
 
-        # ===== PPO算法核心参数 =====
-        learning_rate: float = 3e-4        # 学习率
-        rollouts: int = 48                 # 经验回放轮数（增大每代训练时长）
-        learning_epochs: int = 6           # 每次更新的训练轮数（增大每代训练时长）
-        mini_batches: int = 32             # 小批量数量
-        discount_factor: float = 0.99      # 折扣因子
-        lambda_param: float = 0.95         # GAE参数
-        grad_norm_clip: float = 1.0        # 梯度裁剪
+        # ===== PPO Clipping Parameters =====
+        ratio_clip: float = 0.2  # PPO clipping ratio
+        value_clip: float = 0.2  # Value clipping
+        clip_predicted_values: bool = True  # Clip predicted values
 
-        # ===== PPO裁剪参数 =====
-        ratio_clip: float = 0.2            # PPO裁剪比率
-        value_clip: float = 0.2            # 价值裁剪
-        clip_predicted_values: bool = True # 裁剪预测值
-
-        # 中型网络（默认配置，适合大部分任务）
+        # Medium-sized network (default configuration, suitable for most tasks)
         policy_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)
         value_hidden_layer_sizes: tuple[int, ...] = (256, 128, 64)

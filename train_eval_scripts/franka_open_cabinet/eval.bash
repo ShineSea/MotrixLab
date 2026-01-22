@@ -1,1 +1,0 @@
-uv run ./scripts/play.py --env franka_open_cabinet  --num-envs 20

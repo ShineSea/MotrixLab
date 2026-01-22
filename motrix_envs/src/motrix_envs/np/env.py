@@ -53,12 +53,14 @@ class NpEnv(ABEnv):
     _model: mtx.SceneModel
     _cfg: EnvCfg
     _state: NpEnvState = None
+    _render_spacing: float
 
     def __init__(self, cfg: EnvCfg, num_envs: int = 1):
         self._cfg = cfg
         self._num_envs = num_envs
         self._model = mtx.load_model(cfg.model_file)
         self._model.options.timestep = cfg.sim_dt
+        self._render_spacing = cfg.render_spacing
 
     @property
     def model(self) -> mtx.SceneModel:
@@ -82,6 +84,13 @@ class NpEnv(ABEnv):
         return self._cfg
 
     @property
+    def render_spacing(self) -> bool:
+        """
+        Get the render spacing, with which the multi-envs will be rendered seperately in grid
+        """
+        return self._render_spacing
+
+    @property
     def num_envs(self) -> int:
         return self._num_envs
 
@@ -89,12 +98,9 @@ class NpEnv(ABEnv):
         """
         Create a new environment state
         """
-        #!! observation_space是一维的时候这个代码才是对的
         obs = np.zeros((self._num_envs, self.observation_space.shape[0]), dtype=np.float32)
         reward = np.zeros((self._num_envs,), dtype=np.float32)
-        # 初始任务逻辑结束 
         terminated = np.ones((self._num_envs,), dtype=bool)
-
         truncated = np.zeros((self._num_envs,), dtype=bool)
         info = {"steps": np.zeros((self._num_envs,), dtype=np.uint64)}
         data = mtx.SceneData(self._model, batch=[self._num_envs])
@@ -110,12 +116,10 @@ class NpEnv(ABEnv):
         state = self._state
         done = state.done
         assert done.shape == (self._num_envs,)
-        # 如果所有环境都没结束，则直接返回
         if not np.any(done):
             return
-        # 将任务 结束的环境步数置0
+
         np.putmask(state.info["steps"], done, 0)
-        # 取出任务结束的环境数据 
         data = state.data[done]
         obs, info1 = self.reset(data)
         state.obs[done] = obs
