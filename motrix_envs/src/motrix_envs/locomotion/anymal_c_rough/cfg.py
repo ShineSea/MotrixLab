@@ -107,9 +107,9 @@ class RewardConfig:
     )
 
 
-@registry.envcfg("anymal_c_navigation_complex")
+@registry.envcfg("anymal_c_navigation_rough")
 @dataclass
-class AnymalCComplexEnvCfg(EnvCfg):
+class AnymalCRoughEnvCfg(EnvCfg):
     model_file: str = model_file
     reset_noise_scale: float = 0.01
     max_episode_seconds: float = 7.0

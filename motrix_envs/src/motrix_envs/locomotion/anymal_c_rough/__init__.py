@@ -14,5 +14,5 @@
 # ==============================================================================
 
 from . import anymal_c_np, cfg  # noqa: F401
-from .anymal_c_np import AnymalCEnv  # noqa: F401
-from .cfg import AnymalCEnvCfg  # noqa: F401
+from .anymal_c_np import AnymalCRoughEnv  # noqa: F401
+from .cfg import AnymalCRoughEnvCfg  # noqa: F401

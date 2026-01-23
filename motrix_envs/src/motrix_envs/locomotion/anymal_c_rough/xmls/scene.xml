@@ -14,13 +14,14 @@
       width="512"
       height="512" />
     <texture name="motphys-ground" type="2d" file="../../../common/motphys-ground.png" />
-    <material name="motphys-ground" texture="motphys-ground" texuniform="true"
-      texrepeat="0.4 0.4" />
+    <material name="motphys-ground" texture="motphys-ground" texuniform="true" texrepeat="0.4 0.4" />
+    <hfield name="hfield" file="assets/heightmap.png" size="20 20 2.5 0.1" />
   </asset>
 
   <worldbody>
     <light diffuse="0.6 0.6 0.6" pos="0 0 1.5"
       dir="-0.49835488200187683 0.2925136387348175 -0.8161361217498779" directional="true" />
-    <geom name="ground" size="0 0 0.05" type="plane" material="motphys-ground" />
+    <geom name="ground" pos="0 0 -1" type="hfield" hfield="hfield" material="motphys-ground"
+      contype="1" conaffinity="0" priority="1" friction="0.6" />
   </worldbody>
 </mujoco>
