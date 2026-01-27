@@ -13,9 +13,9 @@
     <texture name="skybox" type="skybox" builtin="gradient" rgb1="0.4 0.4 0.4" rgb2="0 0 0"
       width="512"
       height="512" />
-    <texture name="motphys-ground" type="2d" file="../../../common/motphys-ground.png" />
+    <texture name="motphys-ground" type="2d" file="../../../../common/motphys-ground.png" />
     <material name="motphys-ground" texture="motphys-ground" texuniform="true" texrepeat="0.4 0.4" />
-    <hfield name="hfield" file="assets/heightmap.png" size="20 20 2.5 0.1" />
+    <hfield name="hfield" file="heightmap.png" size="20 20 2.5 0.1" />
   </asset>
 
   <worldbody>

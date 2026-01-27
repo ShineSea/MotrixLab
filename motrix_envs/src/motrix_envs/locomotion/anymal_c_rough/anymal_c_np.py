@@ -265,7 +265,7 @@ class AnymalCRoughEnv(NpEnv):
         obs = self._compute_obs(state.data,pose_commands,0.3,np.deg2rad(15),state.info["current_actions"])
         
         # 计算奖励
-        reward = self._compute_reward(data, state)
+        reward = self._compute_reward(state)
         # 计算终止条件
         terminated_state = self._compute_terminated(state)
         terminated = terminated_state.terminated
@@ -421,8 +421,8 @@ class AnymalCRoughEnv(NpEnv):
         
         # 首次到达位置的一次性奖励
         info["ever_reached"] = info.get("ever_reached", np.zeros(self._num_envs, dtype=bool))
-        first_time_reach = np.logical_and(self.reached_all, ~info["ever_reached"])
-        info["ever_reached"] = np.logical_or(info["ever_reached"], self.reached_all)
+        first_time_reach = np.logical_and(reached_all, ~info["ever_reached"])
+        info["ever_reached"] = np.logical_or(info["ever_reached"], reached_all)
         arrival_bonus = np.where(first_time_reach, 10.0, 0.0)
         
         # 距离接近奖励：激励靠近目标
@@ -441,9 +441,9 @@ class AnymalCRoughEnv(NpEnv):
         # 到达与停止判定（奖励加成）
         speed_xy = np.linalg.norm(base_lin_vel[:, :2], axis=1)
         zero_ang_mask = np.abs(gyro[:, 2]) < 0.05  # 放宽到0.05 rad/s ≈ 2.86°/s
-        zero_ang_bonus = np.where(np.logical_and(self.reached_all, zero_ang_mask), 6.0, 0.0)
+        zero_ang_bonus = np.where(np.logical_and(reached_all, zero_ang_mask), 6.0, 0.0)
         stop_base = 2 * (0.8 * np.exp(- (speed_xy / 0.2)**2) + 1.2 * np.exp(- (np.abs(gyro[:, 2]) / 0.1)**4))
-        stop_bonus = np.where(self.reached_all, stop_base + zero_ang_bonus, 0.0)
+        stop_bonus = np.where(reached_all, stop_base + zero_ang_bonus, 0.0)
         
         # Z轴线速度惩罚
         lin_vel_z_penalty = np.square(base_lin_vel[:, 2])
@@ -465,7 +465,7 @@ class AnymalCRoughEnv(NpEnv):
         # 综合奖励
         # 到达后：停止所有正向奖励，只保留停止奖励和惩罚项
         reward = np.where(
-            self.reached_all,
+            reached_all,
             # 到达后：只有停止奖励和惩罚
             (
                 stop_bonus
@@ -733,11 +733,11 @@ class AnymalCRoughEnv(NpEnv):
         position_error_normalized = self.position_error / 5.0
         heading_error_normalized = self.heading_diff / np.pi
         distance_normalized = np.clip(self.distance_to_target / 5.0, 0, 1)
-        reached_flag = self.reached_all.astype(np.float32)
+        reached_flag = reached_all.astype(np.float32)
         
         # 计算是否达到zero_ang标准
         stop_ready = np.logical_and(
-            self.reached_all,
+            reached_all,
             np.abs(gyro[:, 2]) < 5e-2
         )
         stop_ready_flag = stop_ready.astype(np.float32)
