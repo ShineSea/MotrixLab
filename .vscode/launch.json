@@ -6,7 +6,59 @@
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/scripts/train.py",
-      "args": ["--env", "anymal_c_navigation_rough"],
+      "args": ["--env", "anymal_c_navigation_rough","--num-envs","20","--render","True"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "导航复杂地形推理（uv venv）",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/play.py",
+      "args": ["--env", "anymal_c_navigation_rough","--num-envs","10"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "导航平坦地形训练（uv venv）",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/train.py",
+      "args": ["--env", "anymal_c_navigation_flat","--num-envs","20","--render","True"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "go1复杂地形训练（uv venv）",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/train.py",
+      "args": ["--env", "go1-rough-terrain-walk","--num-envs","20","--render","True"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    },
+    {
+      "name": "go1复杂地形推理（uv venv）",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/play.py",
+      "args": ["--env", "go1-rough-terrain-walk"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",

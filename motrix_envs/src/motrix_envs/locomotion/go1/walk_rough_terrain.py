@@ -297,7 +297,7 @@ class Go1WalkRoughTask(NpEnv):
         if 0.9 < average_reward and self.training_level == 0:
             self.training_level = 1
         # elif 1.35 < average_reward and self.training_level == 1:
-        #     self.training_level = 2
+        #   self.training_level = 2
 
         return state.replace(reward=rwd)
 
@@ -336,10 +336,10 @@ class Go1WalkRoughTask(NpEnv):
     ) -> dict[str, np.ndarray]:
         commands = info["commands"]
         return {
-            "lin_vel_z": self._reward_lin_vel_z(data),
-            "ang_vel_xy": self._reward_ang_vel_xy(data),
-            "orientation": self._reward_orientation(data),
-            "torques": self._reward_torques(data),
+            "lin_vel_z": self._reward_lin_vel_z(data), #惩罚身体上下方向速度
+            "ang_vel_xy": self._reward_ang_vel_xy(data),#惩罚roll,pitch速度
+            "orientation": self._reward_orientation(data),#水平
+            "torques": self._reward_torques(data), 
             "dof_vel": self._reward_dof_vel(data),
             "dof_acc": self._reward_dof_acc(data, info),
             "action_rate": self._reward_action_rate(info),
@@ -361,6 +361,8 @@ class Go1WalkRoughTask(NpEnv):
         return np.sum(np.square(self.get_gyro(data)[:, :2]), axis=1)
 
     def _reward_orientation(self, data):
+        # 将重力向量从世界坐标系变换到基座局部坐标系
+        # 将x,y分量的平方
         # Penalize non flat base orientation
         pose = self._body.get_pose(data)
         base_quat = pose[:, 3:7]
