@@ -5,6 +5,7 @@ logs
 .idea
 .claude
 .venv
+.vscode
 node_modules
 docs/build
 docs/source/user_guide
