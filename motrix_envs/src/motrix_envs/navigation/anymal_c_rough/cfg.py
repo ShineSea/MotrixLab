@@ -99,9 +99,9 @@ class Sensor:
 class RewardConfig:
     scales: dict[str, float] = field(
         default_factory=lambda: {
-            "termination": -400.0,
-            "tracking_lin_vel": 1.0,
-            "tracking_ang_vel": 0.5,
+            "termination": -200.0,
+            "tracking_lin_vel": 2.0,
+            "tracking_ang_vel": 0.8,
             "lin_vel_z": -2.0,
             "ang_vel_xy": -0.05,
             "orientation": -0.0,
@@ -112,7 +112,7 @@ class RewardConfig:
             "feet_air_time": 1.0,
             "collision": -1.0 * 0,
             "action_rate": -0.001,
-            "stand_still": -0.0,
+            "stand_still": 0,
             "arrival_bonus":10.0,
             "approach_reward":1.0,
             "stop_bonus":1.0,
@@ -128,6 +128,7 @@ class RewardConfig:
 @registry.envcfg("anymal_c_navigation_rough")
 @dataclass
 class AnymalCRoughEnvCfg(EnvCfg):
+    render_spacing: float = 0.0
     model_file: str = model_file
     reset_noise_scale: float = 0.01
     max_episode_seconds: float = 7.0

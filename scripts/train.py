@@ -32,6 +32,7 @@ _SIM_BACKEND = flags.DEFINE_string(
 _NUM_ENVS = flags.DEFINE_integer("num-envs", 2048, "Number of envs to train")
 _RENDER = flags.DEFINE_bool("render", False, "Render the env")
 _TRAIN_BACKEND = flags.DEFINE_string("train-backend", "jax", "The learning backend. (jax/torch)")
+_PRE_POLICY = flags.DEFINE_string("pre-policy", None, "pre policy")
 _SEED = flags.DEFINE_integer("seed", None, "Random seed for reproducibility")
 _RAND_SEED = flags.DEFINE_bool("rand-seed", False, "Generate random seed")
 
@@ -71,6 +72,10 @@ def main(argv):
         train_backend = get_train_backend(device_supports)
     else:
         train_backend = _TRAIN_BACKEND.value
+    
+    pre_policy=None
+    if _PRE_POLICY.present:
+        pre_policy=_PRE_POLICY.value
 
     trainer = None
     if train_backend == "jax":
@@ -87,7 +92,7 @@ def main(argv):
     else:
         raise Exception(f"Unknown train backend: {train_backend}")
 
-    trainer.train()
+    trainer.train(pre_policy)
 
 
 if __name__ == "__main__":

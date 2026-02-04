@@ -14,25 +14,14 @@
           <geom quat="0 0 0 1"/>
         </default>
       </default>
-      <!-- <default class="collision">
+      <default class="collision">
         <geom group="3" type="cylinder"/>
         <default class="foot">
           <geom type="sphere" size="0.03" pos="0 0 0.02325" priority="1" solimp="0.015 1 0.03" condim="6"
             friction="0.8 0.02 0.01"/>
         </default>
-      </default> -->
-      <default class="collision">
-        <geom group="3" type="cylinder"/>
-        <default class="foot">
-          <geom type="sphere"
-                size="0.035"
-                pos="0 0 0.035"
-                condim="3"
-                solimp="0.9 0.95 0.001"
-                friction="0.8 0.02 0.01"/>
-        </default>
       </default>
-      
+
       <default class="affine">
         <position kp="200" kv="1" ctrlrange="-6.28 6.28" forcerange="-140 140"/>
       </default>

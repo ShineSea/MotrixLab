@@ -267,21 +267,16 @@ class AnymalCRoughEnv(NpEnv):
         return target_pos
 
     def update_state(self, state:NpEnvState):
-        data = state.data
-
         pose_commands = state.info["pose_commands"]
         obs = self._compute_obs(state.data,pose_commands,0.3,np.deg2rad(15),state.info["current_actions"])
-        
         # 计算奖励
         reward = self._compute_reward(state)
         # 计算终止条件
-        terminated_state = self._compute_terminated(state)
-        terminated = terminated_state.terminated
-        
-        state.obs = obs
-        state.reward = reward
-        state.terminated = terminated     
-        return state
+        state = self._compute_terminated(state)
+        return state.replace(
+            obs=obs,
+            reward=reward,
+        )
 
     def _get_heading_from_quat(self, quat:np.ndarray) -> np.ndarray:
         # Motrix引擎格式: [qx, qy, qz, qw]
@@ -384,7 +379,7 @@ class AnymalCRoughEnv(NpEnv):
     def _compute_reward(self, state:NpEnvState) -> np.ndarray:
         data = state.data
         info = state.info
-        desired_vel_xy,desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(0.3,np.deg2rad(15))
+        desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(0.1,np.deg2rad(15))
         mask = reached_all.astype(np.float32)
         inv = 1.0 - mask
 
@@ -463,22 +458,17 @@ class AnymalCRoughEnv(NpEnv):
         data = state.data
 
         terminated = np.zeros(self._num_envs, dtype=bool)
-        truncated  = np.zeros(self._num_envs, dtype=bool)
-
-        truncated |= self._check_timeout(state)
         terminated |= self._check_dof_velocity_failure(data)
         terminated |= self._check_base_contact_failure(data)
         terminated |= self._check_side_flip_failure(data)
 
         self._debug_termination(
             state,
-            truncated=truncated,
             terminated=terminated,
         )
 
         return state.replace(
-            terminated=terminated,
-            truncated=truncated,   # 👈 强烈建议加
+            terminated=terminated  
         )
 
     def _check_timeout(self, state: NpEnvState) -> np.ndarray:
@@ -520,15 +510,14 @@ class AnymalCRoughEnv(NpEnv):
         tilt_angle = np.arctan2(gxy, np.abs(gz))
         return tilt_angle > np.deg2rad(75)
 
-    def _debug_termination(self, state, truncated, terminated):
-        if not (truncated.any() or terminated.any()):
+    def _debug_termination(self, state, terminated):
+        if not (terminated.any()):
             return
         if state.info["steps"][0] % 100 != 0:
             return
         print(
             f"[termination] "
             f"terminated={int(terminated.sum())} "
-            f"truncated={int(truncated.sum())}"
         )
 
     def reset(self, data: mtx.SceneData, done: np.ndarray = None) -> tuple[np.ndarray, dict]:
@@ -662,7 +651,7 @@ class AnymalCRoughEnv(NpEnv):
         
         self._compute_commands(data,pose_commands)
 
-        desired_vel_xy,desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(position_threshold,heading_threshold)
+        desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(position_threshold,heading_threshold)
          # 更新目标位置标记
         self._update_target_marker(data, pose_commands)
         # 更新箭头可视化（不影响物理）
@@ -747,7 +736,7 @@ class AnymalCRoughEnv(NpEnv):
         velocity_commands = np.concatenate(
             [desired_vel_xy, desired_yaw_rate[:, np.newaxis]], axis=-1
         )
-        return desired_vel_xy,desired_vel_xy,reached_all,velocity_commands
+        return desired_vel_xy,reached_all,velocity_commands
 
         
      # ------------ reward functions----------------

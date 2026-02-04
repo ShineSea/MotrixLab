@@ -405,7 +405,7 @@ class AnymalCEnv(NpEnv):
         side_flip_mask = tilt_angle > np.deg2rad(75)
         termination_penalty = np.where(side_flip_mask, -20.0, termination_penalty)
         
-        desired_vel_xy,desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(0.3,np.deg2rad(15))
+        desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(0.3,np.deg2rad(15))
 
         # 线速度跟踪奖励
         base_lin_vel = self._model.get_sensor_value(self._cfg.sensor.base_linvel, data)
@@ -713,7 +713,7 @@ class AnymalCEnv(NpEnv):
         
         self._compute_commands(data,pose_commands)
 
-        desired_vel_xy,desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(position_threshold,heading_threshold)
+        desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(position_threshold,heading_threshold)
          # 更新目标位置标记
         self._update_target_marker(data, pose_commands)
         # 更新箭头可视化（不影响物理）
@@ -798,6 +798,6 @@ class AnymalCEnv(NpEnv):
         velocity_commands = np.concatenate(
             [desired_vel_xy, desired_yaw_rate[:, np.newaxis]], axis=-1
         )
-        return desired_vel_xy,desired_vel_xy,reached_all,velocity_commands
+        return desired_vel_xy,reached_all,velocity_commands
 
         

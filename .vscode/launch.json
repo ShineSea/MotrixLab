@@ -6,39 +6,30 @@
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/scripts/train.py",
-      "args": ["--env", "anymal_c_navigation_rough","--num-envs","20","--render","True"],
+      "args": ["--env", "anymal_c_navigation_rough","--num-envs","20","--render","True","--pre-policy","F:\\workspace\\DeepLearning\\MotrixLab\\runs\\anymal_c_navigation_flat\\26-02-03_09-39-49-752829_PPO\\checkpoints\\best_agent.pt" ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      }
     },
     {
       "name": "导航复杂地形推理（uv venv）",
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/scripts/play.py",
-      "args": ["--env", "anymal_c_navigation_rough","--num-envs","10"],
+      "args": ["--env", "anymal_c_navigation_rough","--num-envs","1"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      }
     },
     {
       "name": "导航平坦地形训练（uv venv）",
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/scripts/train.py",
-      "args": ["--env", "anymal_c_navigation_flat","--num-envs","20","--render","True"],
+      "args": ["--env", "anymal_c_navigation_flat","--num-envs","2048"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      }
     },
     {
       "name": "go1复杂地形训练（uv venv）",
@@ -49,9 +40,6 @@
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      }
     },
     {
       "name": "go1复杂地形推理（uv venv）",
@@ -62,9 +50,26 @@
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}"
-      }
+    },
+    {
+      "name": "go2平坦地形训练（uv venv）",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/train.py",
+      "args": ["--env", "go2-flat-terrain-walk","--num-envs","20","--render","True"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+    },
+    {
+      "name": "go2平坦地形推理（uv venv）",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/play.py",
+      "args": ["--env", "go2-flat-terrain-walk"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
     }
   ]
 }
