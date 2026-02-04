@@ -42,7 +42,7 @@ class ControlConfig:
 @dataclass
 class InitState:
     # the initial position of the robot in the world frame
-    pos = [0.0, 0.0, 0.5]  # Z-axis height matches the initial height of base in XML
+    pos = [0.0, 0.0]  # Z-axis height matches the initial height of base in XML
 
     # position randomization range [x_min, y_min, x_max, y_max]
     pos_randomization_range = [-10.0, -10.0, 10.0, 10.0]  # randomly distributed over 20m x 20m range on ground
@@ -84,32 +84,55 @@ class Normalization:
 @dataclass
 class Asset:
     body_name = "base"
-    foot_names = ["LF_FOOT", "RF_FOOT", "LH_FOOT", "RH_FOOT"]
-    terminate_after_contacts_on = ["base"]
+    foot_names = ["foot"]
+    penalize_contacts_on = ["thigh", "calf"]
+    terminate_after_contacts_on = [
+        "base_collision_0", "base_collision_1", "base_collision_2",
+        "fl_hip_0", "fr_hip_0", "rl_hip_0", "rr_hip_0",
+    ]
     ground_name = "ground"
 
 
 @dataclass
 class Sensor:
-    base_linvel = "base_linvel"
-    base_gyro = "base_gyro"
+    base_linvel = "local_linvel"
+    base_gyro = "gyro"
 
 
 @dataclass
 class RewardConfig:
     scales: dict[str, float] = field(
         default_factory=lambda: {
-            "termination": -400.0,
-            "position_tracking": 0.5,
-            "fine_position_tracking": 0.5,
-            "orientation": -0.2,
+            "termination": -200.0,
+            "tracking_lin_vel": 2.0,
+            "tracking_ang_vel": 0.8,
+            "lin_vel_z": -2.0,
+            "ang_vel_xy": -0.05,
+            "orientation": -0.0,
+            "torques": -0.00001,
+            "dof_vel": -0.0,
+            "dof_acc": -2.5e-7,
+            "base_height": -0.0,
+            "feet_air_time": 1.0,
+            "collision": -1.0 * 0,
+            "action_rate": -0.001,
+            "stand_still": 0,
+            "arrival_bonus":10.0,
+            "approach_reward":1.0,
+            "stop_bonus":1.0,
+            "hip_pos": -1,
+            "calf_pos": -0.3 * 0,
         }
     )
 
+    tracking_sigma: float = 0.25
+    max_foot_height: float = 0.1
 
-@registry.envcfg("anymal_c_navigation_flat")
+
+@registry.envcfg("Isaac-Velocity-Flat-Unitree-Go2-v0")
 @dataclass
-class AnymalCEnvCfg(EnvCfg):
+class Go2FlatEnvCfg(EnvCfg):
+    render_spacing: float = 0.0
     model_file: str = model_file
     reset_noise_scale: float = 0.01
     max_episode_seconds: float = 7.0

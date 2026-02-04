@@ -13,6 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from . import anymal_c_np, cfg  # noqa: F401
-from .anymal_c_np import AnymalCEnv  # noqa: F401
-from .cfg import AnymalCEnvCfg  # noqa: F401
+from . import go2_np, cfg  # noqa: F401
+from .go2_np import Go2FlatEnv  # noqa: F401
+from .cfg import Go2FlatEnvCfg
