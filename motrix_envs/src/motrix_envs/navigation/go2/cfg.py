@@ -47,21 +47,22 @@ class InitState:
     # position randomization range [x_min, y_min, x_max, y_max]
     pos_randomization_range = [-10.0, -10.0, 10.0, 10.0]  # randomly distributed over 20m x 20m range on ground
 
-    # the default angles for all joints. key = joint name, value = target angle [rad]
+   # the default angles for all joints. key = joint name, value = target angle [rad]
     default_joint_angles = {
-        "LF_HAA": 0.0,  # [rad]
-        "RF_HAA": 0.0,  # [rad]
-        "LH_HAA": 0.0,  # [rad]
-        "RH_HAA": 0.0,  # [rad]
-        "LF_HFE": 0.4,  # [rad]
-        "RF_HFE": 0.4,  # [rad]
-        "LH_HFE": -0.4,  # [rad]
-        "RH_HFE": -0.4,  # [rad]
-        "LF_KFE": -0.8,  # [rad]
-        "RF_KFE": -0.8,  # [rad]
-        "LH_KFE": 0.8,  # [rad]
-        "RH_KFE": 0.8,  # [rad]
+        "FL_hip"    :  0.1,  # [rad]
+        "FL_thigh"  :  0.9,  # [rad]
+        "FL_calf"   : -1.8,  # [rad]
+        "FR_hip"    : -0.1,  # [rad]
+        "FR_thigh"  :  0.9,  # [rad]
+        "FR_calf"   : -1.8,  # [rad]
+        "RL_hip"    :  0.1,  # [rad]
+        "RL_thigh"  :  0.9,  # [rad]
+        "RL_calf"   : -1.8,  # [rad]
+        "RR_hip"    : -0.1,  # [rad]
+        "RR_thigh"  :  0.9,  # [rad]
+        "RR_calf"   : -1.8,  # [rad]
     }
+
 
 
 @dataclass
@@ -105,7 +106,7 @@ class RewardConfig:
         default_factory=lambda: {
             "termination": -200.0,
             "tracking_lin_vel": 2.0,
-            "tracking_ang_vel": 0.8,
+            "tracking_ang_vel": 1.0,
             "lin_vel_z": -2.0,
             "ang_vel_xy": -0.05,
             "orientation": -0.0,

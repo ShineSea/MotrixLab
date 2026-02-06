@@ -393,7 +393,7 @@ class Go2FlatEnv(NpEnv):
             "dof_acc":          self._reward_dof_acc(data, info),
             "action_rate":      self._reward_action_rate(info),
             "termination":      self._reward_termination(data),
-            "stand_still":      self._reward_stand_still(data, velocity_commands) * inv,
+            "stand_still":      self._reward_stand_still(data, velocity_commands),
 
             # 未到达
             "tracking_lin_vel": self._reward_tracking_lin_vel(data, velocity_commands) * inv,
