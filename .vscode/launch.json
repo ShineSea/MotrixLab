@@ -56,7 +56,7 @@
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/scripts/train.py",
-      "args": ["--env", "Isaac-Velocity-Flat-Unitree-Go2-v0","--num-envs","4096"],
+      "args": ["--env", "Isaac-Velocity-Flat-Unitree-Go2-v0","--num-envs","20","--render","True"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
     },

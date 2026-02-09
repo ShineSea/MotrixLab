@@ -108,12 +108,12 @@ class RewardConfig:
             "approach_reward": 1.0,       
             
             # ===== Locomotion稳定性奖励（保持但降低权重） =====
-            "orientation": -0,              # 姿态稳定（降低权重）
+            "orientation": -2.5e-7,              # 姿态稳定（降低权重）
             "lin_vel_z": -2.0,              # 垂直速度惩罚
             "ang_vel_xy": -0.05,            # XY轴角速度惩罚
-            "torques":  -0.00001,               # 扭矩惩罚
+            "torques":   -0.0002,               # 扭矩惩罚
             "dof_vel": -0,                  # 关节速度惩罚
-            "dof_acc": -0,                  # 关节加速度惩罚
+            "dof_acc": -2.5e-7,                  # 关节加速度惩罚
             "action_rate": -0.001,          # 动作变化率惩罚
             "stand_still": -0,         # 站立惩罚
             

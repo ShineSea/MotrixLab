@@ -409,8 +409,6 @@ class Go2FlatEnv (NpEnv):
             "arrival_bonus":    self._reward_arrival_bonus(info, reached_all) * mask,
             "stop_bonus":       self._reward_stop_bonus(data, reached_all) * mask,
         }
-
-
         rewards = {k: v * self.cfg.reward_config.scales[k] for k, v in reward_dict.items()}
         rwd = sum(rewards.values())
         # rwd = np.clip(rwd, 0.0, 10000.0)
