@@ -417,7 +417,7 @@ class Go2FlatEnv (NpEnv):
         return rwd
 
     def reset(self, data: mtx.SceneData, done: np.ndarray = None) -> tuple[np.ndarray, dict]:
-        cfg: VBotSection01EnvCfg = self._cfg
+        cfg = self._cfg
         num_envs = data.shape[0]
         
         # 先生成机器人的初始位置（在世界坐标系中）

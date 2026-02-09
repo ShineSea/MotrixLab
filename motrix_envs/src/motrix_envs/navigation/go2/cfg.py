@@ -34,8 +34,6 @@ class NoiseConfig:
 
 @dataclass
 class ControlConfig:
-    # stiffness[N*m/rad] uses kp parameter from XML, recorded for reference only
-    # damping[N*m*s/rad] uses kv parameter from XML, recorded for reference only
     action_scale = 0.05  # action scale
 
 
@@ -44,7 +42,7 @@ class InitState:
     # the initial position of the robot in the world frame
     pos = [0.0, 0.0]  # Z-axis height matches the initial height of base in XML
 
-    # position randomization range [x_min, y_min, x_max, y_max]
+     # position randomization range [x_min, y_min, x_max, y_max]
     pos_randomization_range = [-10.0, -10.0, 10.0, 10.0]  # randomly distributed over 20m x 20m range on ground
 
    # the default angles for all joints. key = joint name, value = target angle [rad]
@@ -138,7 +136,7 @@ class Go2FlatEnvCfg(EnvCfg):
     render_spacing: float = 0.0
     model_file: str = model_file
     reset_noise_scale: float = 0.01
-    max_episode_seconds: float = 7.0
+    max_episode_seconds: float = 40
     sim_dt: float = 0.01
     ctrl_dt: float = 0.01
     reset_yaw_scale: float = 0.1
