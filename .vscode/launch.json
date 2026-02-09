@@ -52,24 +52,22 @@
       "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
     },
     {
-      "name": "go2平坦地形训练（uv venv）",
+      "name": "go2平坦地形导航训练",
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/scripts/train.py",
-      "args": ["--env", "Isaac-Velocity-Flat-Unitree-Go2-v0","--num-envs","20","--render","True"],
+      "args": ["--env", "Isaac-Velocity-Flat-Unitree-Go2-v0","--num-envs","4096"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
     },
     {
-      "name": "go2平坦地形推理（uv venv）",
-      "type": "python",
+      "name": "go2平坦地形导航推理",
+      "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/scripts/play.py",
-      "args": ["--env", "Isaac-Velocity-Flat-Unitree-Go2-v0"],
+      "args": ["--env", "Isaac-Velocity-Flat-Unitree-Go2-v0","--num-envs","6"],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
-      "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
     }
   ]
 }

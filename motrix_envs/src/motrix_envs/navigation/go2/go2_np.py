@@ -13,147 +13,137 @@
 # limitations under the License.
 # ==============================================================================
 
-import gymnasium as gym
-import motrixsim as mtx
 import numpy as np
-import os
+import motrixsim as mtx
+import gymnasium as gym
 
 from motrix_envs import registry
 from motrix_envs.np.env import NpEnv, NpEnvState
 from motrix_envs.math.quaternion import Quaternion
 
-from .cfg import Go2FlatEnvCfg
+from .cfg import  Go2FlatEnvCfg
 
-@registry.env("Isaac-Velocity-Flat-Unitree-Go2-v0","np")
-class Go2FlatEnv(NpEnv):
+
+def generate_repeating_array(num_period, num_reset, period_counter):
+    """
+    生成重复数组，用于在固定位置中循环选择
+    num_period: 位置总数
+    num_reset: 需要重置的环境数
+    period_counter: 当前计数器
+    """
+    idx = []
+    for i in range(num_reset):
+        idx.append((period_counter + i) % num_period)
+    return np.array(idx)
+
+
+@registry.env("Isaac-Velocity-Flat-Unitree-Go2-v0", "np")
+class Go2FlatEnv (NpEnv):
     _cfg: Go2FlatEnvCfg
-
-    def __init__(self, cfg:Go2FlatEnvCfg, num_envs: int = 1):
-        super().__init__(cfg, num_envs = num_envs)
-        self._init_action_space()
-        self._init_obs_space()
-        self._init_contact_geometry()
-        self._init_body()
     
+    def __init__(self, cfg: Go2FlatEnvCfg, num_envs: int = 1):
+        # 调用父类NpEnv初始化
+        super().__init__(cfg, num_envs=num_envs)
+        
+        # 初始化机器人body和接触
+        self._body = self._model.get_body(cfg.asset.body_name)
+        self._init_contact_geometry()
+        
+        # 获取目标标记的body
+        self._target_marker_body = self._model.get_body("target_marker")
+        
+        # 获取箭头body（用于可视化，不影响物理）
+        try:
+            self._robot_arrow_body = self._model.get_body("robot_heading_arrow")
+            self._desired_arrow_body = self._model.get_body("desired_heading_arrow")
+        except Exception:
+            self._robot_arrow_body = None
+            self._desired_arrow_body = None
+        
+        # 动作和观测空间
+        self._action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(12,), dtype=np.float32)
+        # 观测空间：54维
+        self._observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(54,), dtype=np.float32)
+        
+        self._num_dof_pos = self._model.num_dof_pos
+        self._num_dof_vel = self._model.num_dof_vel
+        self._num_action = self._model.num_actuators
+        
+        self._init_dof_pos = self._model.compute_init_dof_pos()
+        self._init_dof_vel = np.zeros((self._model.num_dof_vel,), dtype=np.float32)
+        
+        # 查找target_marker的DOF索引
+        self._find_target_marker_dof_indices()
+        
+        # 查找箭头的DOF索引
+        if self._robot_arrow_body is not None and self._desired_arrow_body is not None:
+            self._find_arrow_dof_indices()
+        
+        # 初始化缓存
+        self._init_buffer()
+        
+        # 初始位置生成参数：从配置文件读取
+        self.spawn_center = np.array(cfg.init_state.pos, dtype=np.float32)  # 从配置读取
+        self.spawn_range = 0.1  # 随机生成范围：±0.1m（0.2m×0.2m区域）
+    
+        # 导航统计计数器
+        self.navigation_stats_step = 0
+    
+    def _init_buffer(self):
+        """初始化缓存和参数"""
+        cfg = self._cfg
+        self.default_angles = np.zeros(self._num_action, dtype=np.float32)
+        
         # 归一化系数
         self.commands_scale = np.array(
             [cfg.normalization.lin_vel, cfg.normalization.lin_vel, cfg.normalization.ang_vel],
             dtype=np.float32
         )
-        self._num_dof_pos = self._model.num_dof_pos
-        self._num_dof_vel = self._model.num_dof_vel
-        self._num_action = self._model.num_actuators
+        
+        # 设置默认关节角度
+        for i in range(self._model.num_actuators):
+            for name, angle in cfg.init_state.default_joint_angles.items():
+                if name in self._model.actuator_names[i]:
+                    self.default_angles[i] = angle
 
-        self._init_dof_pos = self._model.compute_init_dof_pos()
-        self._init_dof_vel = np.zeros(
-            (self._model.num_dof_vel,),
-            dtype=np.float32,
-        ) 
-        self._setup_init_dof_pos()
-
-    def _init_action_space(self):
-        self._action_space = gym.spaces.Box(low = -1.0, high = 1.0, shape = (12,), dtype = np.float32)
-
-     # 观测空间：linvel(3) + gyro(3) + gravity(3) + joint_pos(12) + joint_vel(12) + last_actions(12) + commands(3) + position_error(2) + heading_error(1) + distance(1) + reached_flag(1) + stop_ready_flag(1) = 54
-        '''
-        linvel (3)：线性速度 (3)
-        解释：表示机器人的三维线性速度，通常包括 X、Y 和 Z 轴的速度分量。
-
-        gyro (3)：陀螺仪 (3)
-        解释：表示机器人的旋转速度，通常包括绕 X、Y 和 Z 轴的角速度分量。
-
-        gravity (3)：重力 (3)
-        解释：表示机器人的重力方向，通常用于描述重力的三维分量，通常为三个值：沿着 X、Y 和 Z 轴的重力分量。
-
-        joint_pos (12)：关节位置 (12)
-        解释：表示机器人的 12 个关节的位置，通常用于描述机器人的每个关节的角度或位置。
-
-        joint_vel (12)：关节速度 (12)
-        解释：表示机器人的 12 个关节的速度，通常用于描述每个关节的角速度或线速度。
-
-        last_actions (12)：上一次动作 (12)
-        解释：表示机器人上一次执行的 12 个动作，通常用于控制系统中记录先前的控制命令。
-
-        commands (3)：指令 (3)
-        解释：表示机器人接收到的控制指令，通常是三维的，可以代表机器人的目标位置、速度或其他参数。
-
-        position_error (2)：位置误差 (2)
-        解释：表示机器人的位置误差，通常包括 X 和 Y 轴上的误差，或与目标位置的偏差。
-
-        heading_error (1)：航向误差 (1)
-        解释：表示机器人的航向误差，通常表示机器人的朝向与目标航向之间的偏差。
-
-        distance (1)：距离 (1)
-        解释：表示机器人到目标的距离，通常用于导航或路径规划任务中。
-
-        reached_flag (1)：到达标志 (1)
-        解释：表示机器人是否到达了目标位置，通常是一个布尔值（0 或 1）。
-
-        stop_ready_flag (1)：停止准备标志 (1)
-        解释：表示机器人是否准备好停止，通常是一个布尔值（0 或 1）。
-        '''
-    def _init_obs_space(self):
-        self._observation_space = gym.spaces.Box(low = -np.inf, high = np.inf, shape = (54,), dtype = np.float32)
-
-    def  _init_body(self):
-
-        self._body = self._model.get_body(self.cfg.asset.body_name)
-        # 获取目标标记的body
-        self._target_marker_body = self._model.get_body("target_marker")
-        # 获取箭头body（用于可视化，不影响物理）
-        try:
-            self._robot_arrow_body = self._model.get_body("robot_heading_arrow")
-            self._desired_arrow_body = self._model.get_body("desired_heading_arrow")
-        except Exception as e:
-            self._robot_arrow_body = None
-            self._desired_arrow_body = None
-
-    def _setup_init_dof_pos(self):
-         # DOF结构：
-        # DOF 0-2: target_marker (3个: slide x, slide y, hinge yaw)
-        # DOF 3-5: base position (3个)
-        # DOF 6-9: base quaternion (4个)
-        # DOF 10-21: joint angles (12个)
-        # DOF 22-28: robot_heading_arrow freejoint (7个: 3 pos + 4 quat)
-        # DOF 29-35: desired_heading_arrow freejoint (7个: 3 pos + 4 quat)
         self._target_marker_dof_start = 0
         self._target_marker_dof_end = 3
         # base的四元数索引
         self._base_quat_dof_start = 6
         self._base_quat_dof_end = 10
-
         #关节角的索引
         self._joint_angle_dof_start=10
         self._joint_angle_dof_end=22
 
-         # robot_heading_arrow的DOF索引
+        self._init_dof_pos[self._joint_angle_dof_start:self._joint_angle_dof_end] = self.default_angles
+        self.action_filter_alpha = 0.3
+    
+    def _find_target_marker_dof_indices(self):
+        """查找target_marker在dof_pos中的索引位置"""
+        self._target_marker_dof_start = 0
+        self._target_marker_dof_end = 3
+        self._init_dof_pos[0:3] = [0.0, 0.0, 0.0]
+        self._base_quat_start = 6
+        self._base_quat_end = 10
+    
+    def _find_arrow_dof_indices(self):
+        """查找箭头在dof_pos中的索引位置"""
         self._robot_arrow_dof_start = 22
         self._robot_arrow_dof_end = 29
-        
-        # desired_heading_arrow的DOF索引
         self._desired_arrow_dof_start = 29
         self._desired_arrow_dof_end = 36
-
-        # 设置与目标位置的初始偏移
-        self._init_dof_pos[self._target_marker_dof_start:self._target_marker_dof_end] = [0.0, 0.0, 0.0]  # [x, y, yaw]
-
-        # 设置箭头的初始位置和姿态: [x, y, z, qx, qy, qz, qw]
+        
+   
         if self._robot_arrow_dof_end <= len(self._init_dof_pos):
             self._init_dof_pos[self._robot_arrow_dof_start:self._robot_arrow_dof_end] = [0.0, 0.0, 0.76, 0.0, 0.0, 0.0, 1.0]
-            
         if self._desired_arrow_dof_end <= len(self._init_dof_pos):
             self._init_dof_pos[self._desired_arrow_dof_start:self._desired_arrow_dof_end] = [0.0, 0.0, 0.76, 0.0, 0.0, 0.0, 1.0]
-
-        # 设置默认关节角度
-        cfg = self._cfg
-        self.default_angles = np.zeros(self._num_action, dtype = np.float32)
-        for i in range(self._model.num_actuators):
-            for name, angle in cfg.init_state.default_joint_angles.items():
-                if name in self._model.actuator_names[i]:
-                    self.default_angles[i] = angle
-        self._init_dof_pos[self._joint_angle_dof_start: self._joint_angle_dof_end] = self.default_angles
     
-
+    def _init_contact_geometry(self):
+        """初始化接触检测所需的几何体索引"""
+        self._init_termination_contact()
+        self._init_foot_contact()
+    
     def _init_contact_geometry(self):
         """初始化接触检测所需的几何体索引"""
         cfg = self._cfg
@@ -216,152 +206,124 @@ class Go2FlatEnv(NpEnv):
             self.foot_contact_check = np.zeros((0, 2), dtype=np.uint32)
             self.num_foot_check = 0
             print("Warning: No foot contacts configured")
-
+    
     def get_dof_pos(self, data: mtx.SceneData):
         return self._body.get_joint_dof_pos(data)
-
+    
     def get_dof_vel(self, data: mtx.SceneData):
         return self._body.get_joint_dof_vel(data)
-
+    
     def _extract_root_state(self, data):
-        """
-        从self._body中提取根节点状态
-        """
+        """从self._body中提取根节点状态"""
         pose = self._body.get_pose(data)
-        # 位置 [x, y, z]
         root_pos = pose[:, :3]
-        # 四元数 [qx, qy, qz, qw] - Motrix引擎格式
         root_quat = pose[:, 3:7]
-        # 使用传感器获取速度
         root_linvel = self.get_local_linvel(data)
         return root_pos, root_quat, root_linvel
-
+    
     @property
     def observation_space(self):
         return self._observation_space
-
+    
     @property
     def action_space(self):
         return self._action_space
-
-    def apply_action(self, actions: np.ndarray, state: NpEnvState):              
-        # 保存当前action用于增量控制
-        if "current_action" not in state.info:
-            state.info["current_actions"] = np.zeros_like(actions)
+    
+    def apply_action(self, actions, state):
         state.info["last_dof_vel"] = self.get_dof_vel(state.data)
-        state.info['last_actions'] = state.info['current_actions']
-        state.info['current_actions'] = actions
-        
-        state.data.actuator_ctrls = self._compute_torques(actions, state.data)
+        state.info["last_actions"] = state.info["current_actions"]
+        state.info["current_actions"] = actions
+        state.data.actuator_ctrls = self._compute_target_jq(actions)
         return state
 
-    def _compute_torques(self, actions, data):
-        # 位置控制模式：直接返回目标角度，让MuJoCo的PD控制器处理
-        # action表示相对于默认角度的偏移
-        actions_scaled = actions * self._cfg.control_config.action_scale
-        
-        # 目标关节角 = 默认角度 + 动作偏移
-        target_pos = self.default_angles + actions_scaled
-        
-        # 直接返回目标位置，MuJoCo会根据XML中的kp和kd计算力矩
-        return target_pos
+    def _compute_target_jq(self, actions):
+        # Compute target position from actions.
+        target_jq = actions * self.cfg.control_config.action_scale + self.default_angles
+        return target_jq
 
-    def update_state(self, state:NpEnvState):
-        pose_commands = state.info["pose_commands"]
-        obs = self._compute_obs(state.data,pose_commands,0.3,np.deg2rad(15),state.info["current_actions"])
-        # 计算奖励
-        reward = self._compute_reward(state)
-        # 计算终止条件
-        state = self._compute_terminated(state)
-        return state.replace(
-            obs=obs,
-            reward=reward,
-        )
-
-    def _get_heading_from_quat(self, quat:np.ndarray) -> np.ndarray:
-        # Motrix引擎格式: [qx, qy, qz, qw]
+    
+    def _compute_projected_gravity(self, root_quat: np.ndarray) -> np.ndarray:
+        """计算机器人坐标系中的重力向量"""
+        gravity_vec = np.array([0.0, 0.0, -1.0], dtype=np.float32)
+        gravity_vec = np.tile(gravity_vec, (root_quat.shape[0], 1))
+        return Quaternion.rotate_inverse(root_quat, gravity_vec)
+    
+    def _get_heading_from_quat(self, quat: np.ndarray) -> np.ndarray:
+        """从四元数计算yaw角（朝向）"""
         qx, qy, qz, qw = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
-        # 计算yaw角（绕Z轴旋转）
         siny_cosp = 2 * (qw * qz + qx * qy)
         cosy_cosp = 1 - 2 * (qy * qy + qz * qz)
         heading = np.arctan2(siny_cosp, cosy_cosp)
         return heading
     
+    def _update_target_marker(self, data: mtx.SceneData, pose_commands: np.ndarray):
+        """更新目标位置标记的位置和朝向"""
+        num_envs = data.shape[0]
+        all_dof_pos = data.dof_pos.copy()
+        
+        for env_idx in range(num_envs):
+            target_x = float(pose_commands[env_idx, 0])
+            target_y = float(pose_commands[env_idx, 1])
+            target_yaw = float(pose_commands[env_idx, 2])
+            all_dof_pos[env_idx, self._target_marker_dof_start:self._target_marker_dof_end] = [
+                target_x, target_y, target_yaw
+            ]
+        
+        data.set_dof_pos(all_dof_pos, self._model)
+        self._model.forward_kinematic(data)
+    
     def _update_heading_arrows(self, data: mtx.SceneData, robot_pos: np.ndarray, desired_vel_xy: np.ndarray, base_lin_vel_xy: np.ndarray):
-        """
-        更新箭头位置（使用DOF控制freejoint，不影响物理）
-        robot_pos: [num_envs, 3] - 机器人位置
-        desired_vel_xy: [num_envs, 2] - 期望线速度（地面坐标）
-        base_lin_vel_xy: [num_envs, 2] - 实际线速度（地面坐标）
-        """
+        """更新箭头位置（使用DOF控制freejoint，不影响物理）"""
         if self._robot_arrow_body is None or self._desired_arrow_body is None:
             return
         
         num_envs = data.shape[0]
-        arrow_height = 0.76  # 箭头高度（base=0.56 + 0.2）
-        
-        # 获取所有环境的dof_pos
+        arrow_offset = 0.5  # 箭头相对于机器人的高度偏移
         all_dof_pos = data.dof_pos.copy()
         
         for env_idx in range(num_envs):
-            # 当前运动方向箭头（绿色）：由实际线速度方向决定
+            # 算箭头高度 = 机器人当前高度 + 偏移
+            arrow_height = robot_pos[env_idx, 2] + arrow_offset
+            
+            # 当前运动方向箭头
             cur_v = base_lin_vel_xy[env_idx]
             if np.linalg.norm(cur_v) > 1e-3:
                 cur_yaw = np.arctan2(cur_v[1], cur_v[0])
             else:
                 cur_yaw = 0.0
-            robot_arrow_pos = np.array([
-                robot_pos[env_idx, 0],
-                robot_pos[env_idx, 1],
-                arrow_height
-            ], dtype=np.float32)
+            robot_arrow_pos = np.array([robot_pos[env_idx, 0], robot_pos[env_idx, 1], arrow_height], dtype=np.float32)
             robot_arrow_quat = self._euler_to_quat(0, 0, cur_yaw)
             quat_norm = np.linalg.norm(robot_arrow_quat)
             if quat_norm > 1e-6:
                 robot_arrow_quat = robot_arrow_quat / quat_norm
+            else:
+                robot_arrow_quat = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
             all_dof_pos[env_idx, self._robot_arrow_dof_start:self._robot_arrow_dof_end] = np.concatenate([
                 robot_arrow_pos, robot_arrow_quat
             ])
             
-            # 期望运动方向箭头（蓝色）：由期望线速度方向决定
+            # 期望运动方向箭头
             des_v = desired_vel_xy[env_idx]
             if np.linalg.norm(des_v) > 1e-3:
                 des_yaw = np.arctan2(des_v[1], des_v[0])
             else:
                 des_yaw = 0.0
-            desired_arrow_pos = np.array([
-                robot_pos[env_idx, 0],
-                robot_pos[env_idx, 1],
-                arrow_height
-            ], dtype=np.float32)
+            desired_arrow_pos = np.array([robot_pos[env_idx, 0], robot_pos[env_idx, 1], arrow_height], dtype=np.float32)
             desired_arrow_quat = self._euler_to_quat(0, 0, des_yaw)
             quat_norm = np.linalg.norm(desired_arrow_quat)
             if quat_norm > 1e-6:
                 desired_arrow_quat = desired_arrow_quat / quat_norm
+            else:
+                desired_arrow_quat = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
             all_dof_pos[env_idx, self._desired_arrow_dof_start:self._desired_arrow_dof_end] = np.concatenate([
                 desired_arrow_pos, desired_arrow_quat
             ])
         
-        # 一次性设置所有环境的dof_pos
         data.set_dof_pos(all_dof_pos, self._model)
         self._model.forward_kinematic(data)
     
-    def _quat_multiply(self, q1, q2):
-        """Motrix格式四元数乘法 [qx, qy, qz, qw]"""
-        qx1, qy1, qz1, qw1 = q1[0], q1[1], q1[2], q1[3]
-        qx2, qy2, qz2, qw2 = q2[0], q2[1], q2[2], q2[3]
-        
-        qw = qw1*qw2 - qx1*qx2 - qy1*qy2 - qz1*qz2
-        qx = qw1*qx2 + qx1*qw2 + qy1*qz2 - qz1*qy2
-        qy = qw1*qy2 - qx1*qz2 + qy1*qw2 + qz1*qx2
-        qz = qw1*qz2 + qx1*qy2 - qy1*qx2 + qz1*qw2
-        
-        return np.array([qx, qy, qz, qw], dtype=np.float32)
-    
     def _euler_to_quat(self, roll, pitch, yaw):
-        """
-        欧拉角转四元数 [qx, qy, qz, qw] - Motrix格式
-        """
+        """欧拉角转四元数 [qx, qy, qz, qw] - Motrix格式"""
         cy = np.cos(yaw * 0.5)
         sy = np.sin(yaw * 0.5)
         cp = np.cos(pitch * 0.5)
@@ -376,13 +338,55 @@ class Go2FlatEnv(NpEnv):
         
         return np.array([qx, qy, qz, qw], dtype=np.float32)
     
-    def _compute_reward(self, state:NpEnvState) -> np.ndarray:
+    def update_state(self, state: NpEnvState) -> NpEnvState:
+        """
+        更新环境状态，计算观测、奖励和终止条件
+        """
         data = state.data
-        info = state.info
-        desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(0.1,np.deg2rad(15))
+
+        obs=self._compute_obs(data,state.info)
+       
+        # 更新目标标记和箭头
+        self._update_target_marker(data, state.info["pose_commands"])
+        root_pos, root_quat, root_vel = self._extract_root_state(data)
+        base_lin_vel_xy = root_vel[:, :2]
+        reached_all,desired_vel_xy,velocity_commands=self._compute_velocity_commands(data,state.info)
+        self._update_heading_arrows(data, root_pos, desired_vel_xy, base_lin_vel_xy)
+        
+        # 计算奖励
+        reward = self._compute_reward(data, state.info)
+        
+        # 计算终止条件
+        state = self._compute_terminated(state)
+        return state.replace(
+            obs=obs,
+            reward=reward,
+        )
+    
+    def _compute_terminated(self, state: NpEnvState) -> NpEnvState:
+        data = state.data
+
+        terminated = np.zeros(self._num_envs, dtype=bool)
+        terminated |= self._check_dof_velocity_failure(data)
+        terminated |= self._check_base_contact_failure(data)
+        terminated |= self._check_side_flip_failure(data)
+
+        self._debug_termination(
+            state,
+            terminated=terminated
+        )
+
+        return state.replace(
+            terminated=terminated  
+        )
+    
+    def _compute_reward(self, data: mtx.SceneData, info: dict) -> np.ndarray:
+        """
+        导航任务奖励计算
+        """
+        reached_all,desired_vel_xy,velocity_commands=self._compute_velocity_commands(data,info)
         mask = reached_all.astype(np.float32)
         inv = 1.0 - mask
-
         reward_dict = {
             # always-on
             "lin_vel_z":        self._reward_lin_vel_z(data),
@@ -394,11 +398,12 @@ class Go2FlatEnv(NpEnv):
             "action_rate":      self._reward_action_rate(info),
             "termination":      self._reward_termination(data),
             "stand_still":      self._reward_stand_still(data, velocity_commands),
-
+           
             # 未到达
             "tracking_lin_vel": self._reward_tracking_lin_vel(data, velocity_commands) * inv,
             "tracking_ang_vel": self._reward_tracking_ang_vel(data, velocity_commands) * inv,  
-            "approach_reward":  self._reward_approch(info) * inv,
+            "approach_reward":  self._reward_approch(data,info) * inv,
+            
 
             # 已到达
             "arrival_bonus":    self._reward_arrival_bonus(info, reached_all) * mask,
@@ -409,121 +414,12 @@ class Go2FlatEnv(NpEnv):
         rewards = {k: v * self.cfg.reward_config.scales[k] for k, v in reward_dict.items()}
         rwd = sum(rewards.values())
         # rwd = np.clip(rwd, 0.0, 10000.0)
-
         return rwd
-    
-    def _update_target_marker(self, data: mtx.SceneData, pose_commands: np.ndarray):
-        """
-        更新目标位置标记的位置和朝向
-        pose_commands: [num_envs, 3] - (target_x, target_y, target_heading)
-        """
-        num_envs = data.shape[0]
-        
-        # 获取所有环境的dof_pos
-        all_dof_pos = data.dof_pos.copy()  # [num_envs, num_dof]
-        
-        # 为每个环境更新目标标记位置
-        for env_idx in range(num_envs):
-            target_x = float(pose_commands[env_idx, 0])
-            target_y = float(pose_commands[env_idx, 1])
-            target_yaw = float(pose_commands[env_idx, 2])  # 已经是角度，不需要转换
-            
-            # 更新target_marker的DOF: [x, y, yaw]
-            # 只需要设置水平位置和绕Z轴的朝向
-            all_dof_pos[env_idx, self._target_marker_dof_start:self._target_marker_dof_end] = [
-                target_x, target_y, target_yaw
-            ]
-        
-        # 一次性设置所有环境的dof_pos
-        data.set_dof_pos(all_dof_pos, self._model)
-        # 必须调用forward_kinematic才能更新body的pose
-        self._model.forward_kinematic(data)
-
-    def _compute_projected_gravity(self, quat: np.ndarray) -> np.ndarray:
-        # Motrix引擎格式: [qx, qy, qz, qw]
-        qx, qy, qz, qw = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
-        # 重力向量
-        gravity_world = np.array([0.0, 0.0, -1.0], dtype=np.float32)
-        vx, vy, vz = gravity_world[0], gravity_world[1], gravity_world[2]
-
-        # 计算旋转后向量（四元数旋转公式）
-        rx = (1 - 2*(qy*qy + qz*qz)) * vx + 2*(qx*qy - qw*qz) * vy + 2*(qx*qz + qw*qy) * vz
-        ry = 2*(qx*qy + qw*qz) * vx + (1 - 2*(qx*qx + qz*qz)) * vy + 2*(qy*qz - qw*qx) * vz
-        rz = 2*(qx*qz - qw*qy) * vx + 2*(qy*qz + qw*qx) * vy + (1 - 2*(qx*qx + qy*qy)) * vz
-    
-        projected_gravity = np.stack([rx, ry, rz], axis = -1)
-        return projected_gravity
-
-    def _compute_terminated(self, state: NpEnvState) -> NpEnvState:
-        data = state.data
-
-        terminated = np.zeros(self._num_envs, dtype=bool)
-        terminated |= self._check_dof_velocity_failure(data)
-        terminated |= self._check_base_contact_failure(data)
-        terminated |= self._check_side_flip_failure(data)
-
-        self._debug_termination(
-            state,
-            terminated=terminated,
-        )
-
-        return state.replace(
-            terminated=terminated  
-        )
-
-    def _check_timeout(self, state: NpEnvState) -> np.ndarray:
-        if not self._cfg.max_episode_steps:
-            return np.zeros(self._num_envs, dtype=bool)
-        return state.info["steps"] >= self._cfg.max_episode_steps
-
-     # 检查DOF速度是否超限（防止inf/数值发散） 
-    def _check_dof_velocity_failure(self, data) -> np.ndarray:
-        dof_vel = self.get_dof_vel(data)
-        vel_max = np.abs(dof_vel).max(axis=1)
-
-        vel_overflow = vel_max > self._cfg.max_dof_vel
-        vel_extreme = (
-            np.isnan(dof_vel).any(axis=1)
-            | np.isinf(dof_vel).any(axis=1)
-            | (vel_max > 1e6)
-        )
-        return vel_overflow | vel_extreme
-    
-    # 机器人基座接触地面终止
-    def _check_base_contact_failure(self, data) -> np.ndarray:
-        cquerys = self._model.get_contact_query(data)
-        termination_check = cquerys.is_colliding(self.termination_contact)
-        termination_check = termination_check.reshape(
-            (self._num_envs, self.num_termination_check)
-        )
-        return termination_check.any(axis=1)
-    
-    # 侧翻终止：倾斜角度超过75°
-    def _check_side_flip_failure(self, data) -> np.ndarray:
-        pose = self._body.get_pose(data)
-        root_quat = pose[:, 3:7]
-
-        proj_g = self._compute_projected_gravity(root_quat)
-        gxy = np.linalg.norm(proj_g[:, :2], axis=1)
-        gz = proj_g[:, 2]
-
-        tilt_angle = np.arctan2(gxy, np.abs(gz))
-        return tilt_angle > np.deg2rad(75)
-
-    def _debug_termination(self, state, terminated):
-        if not (terminated.any()):
-            return
-        if state.info["steps"][0] % 100 != 0:
-            return
-        print(
-            f"[termination] "
-            f"terminated={int(terminated.sum())} "
-        )
 
     def reset(self, data: mtx.SceneData, done: np.ndarray = None) -> tuple[np.ndarray, dict]:
-        cfg: AnymalCEnvCfg = self._cfg
+        cfg: VBotSection01EnvCfg = self._cfg
         num_envs = data.shape[0]
-
+        
         # 先生成机器人的初始位置（在世界坐标系中）
         pos_range = cfg.init_state.pos_randomization_range
         robot_init_x = np.random.uniform(
@@ -537,7 +433,6 @@ class Go2FlatEnv(NpEnv):
         robot_init_pos = np.stack([robot_init_x, robot_init_y], axis=1)  # [num_envs, 2]
 
         # 生成目标位置：相对于机器人初始位置的偏移
-        # pose_command_range 现在表示相对机器人的偏移范围
         target_offset = np.random.uniform(
             low = cfg.commands.pose_command_range[:2],
             high = cfg.commands.pose_command_range[3:5],
@@ -611,73 +506,100 @@ class Go2FlatEnv(NpEnv):
         data.set_dof_pos(dof_pos, self._model)
         self._model.forward_kinematic(data)
         
-        obs=self._compute_obs(data,pose_commands)
+        # 更新目标位置标记
+        self._update_target_marker(data, pose_commands)
         
-        root_pos, root_quat, root_vel = self._extract_root_state(data)
-        robot_position = root_pos[:, :2]
-        target_position = pose_commands[:, :2]
-        position_error = target_position - robot_position
-        distance_to_target = np.linalg.norm(position_error, axis=1)  # [num_envs]
         info = {
-            "last_dof_vel": np.zeros((num_envs, self._num_action), dtype=np.float32),
             "pose_commands": pose_commands,
             "last_actions": np.zeros((num_envs, self._num_action), dtype=np.float32),
             "steps": np.zeros(num_envs, dtype=np.int32),
             "current_actions": np.zeros((num_envs, self._num_action), dtype=np.float32),
+            "filtered_actions": np.zeros((num_envs, self._num_action), dtype=np.float32),
             "ever_reached": np.zeros(num_envs, dtype=bool),
-            "min_distance": distance_to_target.copy(),  # 初始化最小距离
+            "min_distance": np.linalg.norm(target_offset, axis=1),  
+            "last_dof_vel": np.zeros((num_envs, self._num_action), dtype=np.float32),  # 上一步关节速度
+            "contacts": np.zeros((num_envs, self.num_foot_check), dtype=np.bool_),  # 足部接触状态
         }
+        
+        obs=self._compute_obs(data,info)
+        return obs, info
+    
 
-        return obs,info
-      
-       
-
-    def _compute_obs(self,data: mtx.SceneData, pose_commands: np.ndarray,position_threshold=0.1,heading_threshold = np.deg2rad(15),last_actions:np.ndarray=None)-> np.ndarray:
-        num_envs = data.shape[0]
-        if last_actions is None:
-            last_actions = np.zeros((num_envs, self._num_action), dtype=np.float32)
-        # 获取根节点状态
+    def _compute_obs(self,data:mtx.SceneData, info: dict) -> np.ndarray:
+        cfg=self._cfg
+         # 获取基础状态
         root_pos, root_quat, root_vel = self._extract_root_state(data)
-
-        # 关节状态（腿部关节）
         joint_pos = self.get_dof_pos(data)
         joint_vel = self.get_dof_vel(data)
         joint_pos_rel = joint_pos - self.default_angles
         
-        # 获取传感器数据
-        base_lin_vel = root_vel[:, :3]
-        gyro = self._model.get_sensor_value(self._cfg.sensor.base_gyro, data)
+        # 传感器数据
+        base_lin_vel = root_vel[:, :3]  # 世界坐标系线速度
+        gyro = self.get_gyro(data)
         projected_gravity = self._compute_projected_gravity(root_quat)
         
-        self._compute_commands(data,pose_commands)
-
-        desired_vel_xy,reached_all,velocity_commands=self._compute_velocity_commands(position_threshold,heading_threshold)
-         # 更新目标位置标记
-        self._update_target_marker(data, pose_commands)
-        # 更新箭头可视化（不影响物理）
-        base_lin_vel_xy = base_lin_vel[:, :2]
-        self._update_heading_arrows(data, root_pos, desired_vel_xy, base_lin_vel_xy)
+        # 导航目标
+        pose_commands = info["pose_commands"]
+        robot_position = root_pos[:, :2]
+        robot_heading = self._get_heading_from_quat(root_quat)
+        target_position = pose_commands[:, :2]
+        target_heading = pose_commands[:, 2]
         
-        # 归一化观测（
-        noisy_linvel = base_lin_vel * self._cfg.normalization.lin_vel
-        noisy_gyro = gyro * self._cfg.normalization.ang_vel
-        noisy_joint_angle = joint_pos_rel * self._cfg.normalization.dof_pos
-        noisy_joint_vel = joint_vel * self._cfg.normalization.dof_vel
+        # 计算位置误差
+        position_error = target_position - robot_position
+        distance_to_target = np.linalg.norm(position_error, axis=1)
+        
+        # 计算朝向误差
+        heading_diff = target_heading - robot_heading
+        heading_diff = np.where(heading_diff > np.pi, heading_diff - 2*np.pi, heading_diff)
+        heading_diff = np.where(heading_diff < -np.pi, heading_diff + 2*np.pi, heading_diff)
+        
+        # 达到判定（只看位置，与奖励计算保持一致）
+        position_threshold = 0.1
+        reached_all = distance_to_target < position_threshold  # 楼梯任务：只要到达位置即可
+        
+        # 计算期望速度命令（与平地navigation一致，简单P控制器）
+        desired_vel_xy = np.clip(position_error * 1.0, -1.0, 1.0)
+        desired_vel_xy = np.where(reached_all[:, np.newaxis], 0.0, desired_vel_xy)
+        
+        # 角速度命令：跟踪运动方向（从当前位置指向目标）
+        # 与vbot_np保持一致的增益和上限，确保转向足够快
+        desired_heading = np.arctan2(position_error[:, 1], position_error[:, 0])
+        heading_to_movement = desired_heading - robot_heading
+        heading_to_movement = np.where(heading_to_movement > np.pi, heading_to_movement - 2*np.pi, heading_to_movement)
+        heading_to_movement = np.where(heading_to_movement < -np.pi, heading_to_movement + 2*np.pi, heading_to_movement)
+        desired_yaw_rate = np.clip(heading_to_movement * 1.0, -1.0, 1.0)  # 增益和上限与vbot_np一致
+        deadband_yaw = np.deg2rad(8)
+        desired_yaw_rate = np.where(np.abs(heading_to_movement) < deadband_yaw, 0.0, desired_yaw_rate)
+        desired_yaw_rate = np.where(reached_all, 0.0, desired_yaw_rate)
+        
+        if desired_yaw_rate.ndim > 1:
+            desired_yaw_rate = desired_yaw_rate.flatten()
+        
+        velocity_commands = np.concatenate(
+            [desired_vel_xy, desired_yaw_rate[:, np.newaxis]], axis=-1
+        )
+        
+        # 归一化观测
+        noisy_linvel = base_lin_vel * cfg.normalization.lin_vel
+        noisy_gyro = gyro * cfg.normalization.ang_vel
+        noisy_joint_angle = joint_pos_rel * cfg.normalization.dof_pos
+        noisy_joint_vel = joint_vel * cfg.normalization.dof_vel
         command_normalized = velocity_commands * self.commands_scale
+        last_actions = info["current_actions"]
         
-        # 计算任务相关观测
-        position_error_normalized = self.position_error / 5.0
-        heading_error_normalized = self.heading_diff / np.pi
-        distance_normalized = np.clip(self.distance_to_target / 5.0, 0, 1)
+        # 任务相关观测
+        position_error_normalized = position_error / 5.0
+        heading_error_normalized = heading_diff / np.pi
+        distance_normalized = np.clip(distance_to_target / 5.0, 0, 1)
         reached_flag = reached_all.astype(np.float32)
         
-        # 计算是否达到zero_ang标准
         stop_ready = np.logical_and(
             reached_all,
             np.abs(gyro[:, 2]) < 5e-2
         )
         stop_ready_flag = stop_ready.astype(np.float32)
-
+        
         obs = np.concatenate(
             [
                 noisy_linvel,       # 3
@@ -688,60 +610,71 @@ class Go2FlatEnv(NpEnv):
                 last_actions,       # 12
                 command_normalized, # 3
                 position_error_normalized,  # 2
-                heading_error_normalized[:, np.newaxis],  # 1
+                heading_error_normalized[:, np.newaxis],  # 1 - 最终朝向误差（保留）
                 distance_normalized[:, np.newaxis],  # 1
                 reached_flag[:, np.newaxis],  # 1
                 stop_ready_flag[:, np.newaxis],  # 1
             ],
             axis=-1,
         )
-        assert obs.shape == (num_envs, 54)
-
+        assert obs.shape == (data.shape[0], 54)  # 54 + 1 = 55维
         return obs
 
-    def _compute_commands(self,data: mtx.SceneData, pose_commands: np.ndarray):
-        # 获取根节点状态
+    def _compute_velocity_commands(self,data:mtx.SceneData, info: dict):
         root_pos, root_quat, root_vel = self._extract_root_state(data)
-        base_lin_vel = root_vel[:, :3]
-        # 计算速度命令（与update_state一致）
+        # 导航目标
+        pose_commands = info["pose_commands"]
         robot_position = root_pos[:, :2]
         robot_heading = self._get_heading_from_quat(root_quat)
         target_position = pose_commands[:, :2]
         target_heading = pose_commands[:, 2]
         
-        self.position_error = target_position - robot_position
-        self.distance_to_target = np.linalg.norm(self.position_error, axis=1)  # [num_envs]
-        self.desired_vel_xy = np.clip(self.position_error * 1.0, -1.0, 1.0)
-
-        self.heading_diff = target_heading - robot_heading
-        self.heading_diff = np.where(self.heading_diff > np.pi, self.heading_diff - 2*np.pi, self.heading_diff)
-        self.heading_diff = np.where(self.heading_diff < -np.pi, self.heading_diff + 2*np.pi, self.heading_diff)
-        self.desired_yaw_rate = np.clip(self.heading_diff * 1.0, -1.0, 1.0)
- 
-
-    def _compute_velocity_commands(self,position_threshold=0.1,heading_threshold = np.deg2rad(15)):
-        reached_position = self.distance_to_target < position_threshold  # [num_envs]
-        desired_vel_xy = np.where(reached_position[:, np.newaxis], 0.0, self.desired_vel_xy)  # 到达后速度为0
+        # 计算位置误差
+        position_error = target_position - robot_position
+        distance_to_target = np.linalg.norm(position_error, axis=1)
         
-        reached_heading = np.abs(self.heading_diff) < heading_threshold  # [num_envs]
-          
-        reached_all = np.logical_and(reached_position, reached_heading)
-        desired_yaw_rate = np.where(reached_all, 0.0, self.desired_yaw_rate)  # 到达后觗速度为0
-        desired_vel_xy = np.where(reached_all[:, np.newaxis], 0.0, desired_vel_xy)  # 到达后速度为0
+        # 计算朝向误差
+        heading_diff = target_heading - robot_heading
+        heading_diff = np.where(heading_diff > np.pi, heading_diff - 2*np.pi, heading_diff)
+        heading_diff = np.where(heading_diff < -np.pi, heading_diff + 2*np.pi, heading_diff)
         
-        # 确保 desired_yaw_rate 是1维数组
+        # 达到判定（只看位置，与奖励计算保持一致）
+        position_threshold = 0.1
+        reached_all = distance_to_target < position_threshold  # 楼梯任务：只要到达位置即可
+        
+        # 计算期望速度命令（与平地navigation一致，简单P控制器）
+        desired_vel_xy = np.clip(position_error * 1.0, -1.0, 1.0)
+        desired_vel_xy = np.where(reached_all[:, np.newaxis], 0.0, desired_vel_xy)
+        
+        # 角速度命令：跟踪运动方向（从当前位置指向目标）
+        # 与vbot_np保持一致的增益和上限，确保转向足够快
+        desired_heading = np.arctan2(position_error[:, 1], position_error[:, 0])
+        heading_to_movement = desired_heading - robot_heading
+        heading_to_movement = np.where(heading_to_movement > np.pi, heading_to_movement - 2*np.pi, heading_to_movement)
+        heading_to_movement = np.where(heading_to_movement < -np.pi, heading_to_movement + 2*np.pi, heading_to_movement)
+        desired_yaw_rate = np.clip(heading_to_movement * 1.0, -1.0, 1.0)  # 增益和上限与vbot_np一致
+        deadband_yaw = np.deg2rad(8)
+        desired_yaw_rate = np.where(np.abs(heading_to_movement) < deadband_yaw, 0.0, desired_yaw_rate)
+        desired_yaw_rate = np.where(reached_all, 0.0, desired_yaw_rate)
+        
         if desired_yaw_rate.ndim > 1:
             desired_yaw_rate = desired_yaw_rate.flatten()
         
         velocity_commands = np.concatenate(
             [desired_vel_xy, desired_yaw_rate[:, np.newaxis]], axis=-1
         )
-        return desired_vel_xy,reached_all,velocity_commands
-
         
-     # ------------ reward functions----------------
+        return reached_all,desired_vel_xy,velocity_commands
+    
+    def _compute_distance_to_target(self,data,info):
+        root_pos, root_quat, root_vel = self._extract_root_state(data)
+        robot_position = root_pos[:, :2]
+        target_position = info["pose_commands"][:, :2]
+        return np.linalg.norm(target_position - robot_position, axis=1)
+        
+         # ------------ reward functions----------------
     def get_local_linvel(self, data: mtx.SceneData) -> np.ndarray:
-        return self._model.get_sensor_value(self.cfg.sensor.base_linvel, data)
+        return self._model.get_sensor_value(self._cfg.sensor.base_linvel, data)
 
     def get_gyro(self, data: mtx.SceneData) -> np.ndarray:
         return self._model.get_sensor_value(self._cfg.sensor.base_gyro, data)
@@ -824,13 +757,14 @@ class Go2FlatEnv(NpEnv):
         return first_time_reach
     
 
-    def _reward_approch(self,info):
+    def _reward_approch(self,data,info):
         # 距离接近奖励：激励靠近目标
         # 使用历史最近距离来计算进步
+        distance_to_target=self._compute_distance_to_target(data,info)
         if "min_distance" not in info:
-            info["min_distance"] = self.distance_to_target.copy()
-        distance_improvement = info["min_distance"] - self.distance_to_target
-        info["min_distance"] = np.minimum(info["min_distance"], self.distance_to_target)
+            info["min_distance"] = distance_to_target.copy()
+        distance_improvement = info["min_distance"] - distance_to_target
+        info["min_distance"] = np.minimum(info["min_distance"], distance_to_target)
         approach_reward = np.clip(distance_improvement * 4.0, -1.0, 1.0)  
         return approach_reward
     
@@ -857,11 +791,51 @@ class Go2FlatEnv(NpEnv):
     #         axis=1,
     #     )
 
-    def border_check(self, data, info: dict):
-        # check whether the robot reaching into the terrain border and change the move direction
-        border_size = 19.0
-        position = self._body.get_position(data)
-        is_out = (np.square(position[:, :2]) > border_size**2).any(axis=1)
-        info["commands"][is_out] = [0, 0, 0]
+    def _check_timeout(self, state: NpEnvState) -> np.ndarray:
+        if not self._cfg.max_episode_steps:
+            return np.zeros(self._num_envs, dtype=bool)
+        return state.info["steps"] >= self._cfg.max_episode_steps
 
-  
+     # 检查DOF速度是否超限（防止inf/数值发散） 
+    def _check_dof_velocity_failure(self, data) -> np.ndarray:
+        dof_vel = self.get_dof_vel(data)
+        vel_max = np.abs(dof_vel).max(axis=1)
+
+        vel_overflow = vel_max > self._cfg.max_dof_vel
+        vel_extreme = (
+            np.isnan(dof_vel).any(axis=1)
+            | np.isinf(dof_vel).any(axis=1)
+            | (vel_max > 1e6)
+        )
+        return vel_overflow | vel_extreme
+    
+    # 机器人基座接触地面终止
+    def _check_base_contact_failure(self, data) -> np.ndarray:
+        cquerys = self._model.get_contact_query(data)
+        termination_check = cquerys.is_colliding(self.termination_contact)
+        termination_check = termination_check.reshape(
+            (self._num_envs, self.num_termination_check)
+        )
+        return termination_check.any(axis=1)
+    
+    # 侧翻终止：倾斜角度超过75°
+    def _check_side_flip_failure(self, data) -> np.ndarray:
+        pose = self._body.get_pose(data)
+        root_quat = pose[:, 3:7]
+
+        proj_g = self._compute_projected_gravity(root_quat)
+        gxy = np.linalg.norm(proj_g[:, :2], axis=1)
+        gz = proj_g[:, 2]
+
+        tilt_angle = np.arctan2(gxy, np.abs(gz))
+        return tilt_angle > np.deg2rad(75)
+
+    def _debug_termination(self, state, terminated):
+        if not (terminated.any()):
+            return
+        if state.info["steps"][0] % 100 != 0:
+            return
+        print(
+            f"[termination] "
+            f"terminated={int(terminated.sum())} "
+        )

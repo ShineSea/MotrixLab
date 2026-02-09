@@ -36,7 +36,7 @@ class NoiseConfig:
 class ControlConfig:
     # stiffness[N*m/rad] uses kp parameter from XML, recorded for reference only
     # damping[N*m*s/rad] uses kv parameter from XML, recorded for reference only
-    action_scale = 0.06  # action scale
+    action_scale = 0.05  # action scale
 
 
 @dataclass
@@ -104,25 +104,27 @@ class Sensor:
 class RewardConfig:
     scales: dict[str, float] = field(
         default_factory=lambda: {
-            "termination": -200.0,
-            "tracking_lin_vel": 2.0,
-            "tracking_ang_vel": 1.0,
-            "lin_vel_z": -2.0,
-            "ang_vel_xy": -0.05,
-            "orientation": -0.0,
-            "torques": -0.00001,
-            "dof_vel": -0.0,
-            "dof_acc": -2.5e-7,
-            "base_height": -0.0,
-            "feet_air_time": 1.0,
-            "collision": -1.0 * 0,
-            "action_rate": -0.001,
-            "stand_still": 0,
+             # ===== 导航任务核心奖励 =====
+            "tracking_lin_vel": 1.5,      
+            "tracking_ang_vel": 0.3,  
+            "approach_reward": 1.0,       
+            
+            # ===== Locomotion稳定性奖励（保持但降低权重） =====
+            "orientation": -0,              # 姿态稳定（降低权重）
+            "lin_vel_z": -2.0,              # 垂直速度惩罚
+            "ang_vel_xy": -0.05,            # XY轴角速度惩罚
+            "torques":  -0.00001,               # 扭矩惩罚
+            "dof_vel": -0,                  # 关节速度惩罚
+            "dof_acc": -0,                  # 关节加速度惩罚
+            "action_rate": -0.001,          # 动作变化率惩罚
+            "stand_still": -0,         # 站立惩罚
+            
+            # ===== 终止惩罚 =====
+            "termination": -20.0,          # 终止惩罚
+
+            # ===== 到达奖励  ====
             "arrival_bonus":10.0,
-            "approach_reward":1.0,
-            "stop_bonus":1.0,
-            "hip_pos": -1,
-            "calf_pos": -0.3 * 0,
+            "stop_bonus":1.0
         }
     )
 
