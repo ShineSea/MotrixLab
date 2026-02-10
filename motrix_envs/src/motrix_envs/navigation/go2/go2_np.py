@@ -397,7 +397,6 @@ class Go2FlatEnv (NpEnv):
             "dof_acc":          self._reward_dof_acc(data, info),
             "action_rate":      self._reward_action_rate(info),
             "termination":      self._reward_termination(data),
-            "stand_still":      self._reward_stand_still(data, velocity_commands),
            
             # 未到达
             "tracking_lin_vel": self._reward_tracking_lin_vel(data, velocity_commands) * inv,
@@ -741,11 +740,6 @@ class Go2FlatEnv (NpEnv):
         ang_vel_error = np.square(commands[:, 2] - self.get_gyro(data)[:, 2])
         return np.exp(-ang_vel_error / self.cfg.reward_config.tracking_sigma)
 
-    def _reward_stand_still(self, data, commands: np.ndarray):
-        # Penalize motion at zero commands
-        return np.sum(np.abs(self.get_dof_pos(data) - self.default_angles), axis=1) * (
-            np.linalg.norm(commands, axis=1) < 0.1
-        )
 
     def _reward_arrival_bonus(self,info,reached_all):
     # 首次到达位置的一次性奖励
@@ -777,17 +771,6 @@ class Go2FlatEnv (NpEnv):
         stop_bonus = np.where(reached_all, stop_base + zero_ang_bonus, 0.0)
         return stop_bonus
 
-    # def _reward_hip_pos(self, data, commands: np.ndarray):
-    #     return (0.8 - np.abs(commands[:, 1])) * np.sum(
-    #         np.square(self.get_dof_pos(data)[:, self.hip_indices] - self.default_angles[self.hip_indices]),
-    #         axis=1,
-    #     )
-
-    # def _reward_calf_pos(self, data, commands: np.ndarray):
-    #     return (0.8 - np.abs(commands[:, 1])) * np.sum(
-    #         np.square(self.get_dof_pos(data)[:, self.calf_indices] - self.default_angles[self.calf_indices]),
-    #         axis=1,
-    #     )
 
     def _check_timeout(self, state: NpEnvState) -> np.ndarray:
         if not self._cfg.max_episode_steps:

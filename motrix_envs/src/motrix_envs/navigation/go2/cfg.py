@@ -34,7 +34,7 @@ class NoiseConfig:
 
 @dataclass
 class ControlConfig:
-    action_scale = 0.25  # action scale
+    action_scale = 0.2  # action scale
 
 
 @dataclass
@@ -104,18 +104,17 @@ class RewardConfig:
         default_factory=lambda: {
              # ===== 导航任务核心奖励 =====
             "tracking_lin_vel": 1.5,      
-            "tracking_ang_vel": 0.3,  
+            "tracking_ang_vel": 0.75,  
             "approach_reward": 1.0,       
             
             # ===== Locomotion稳定性奖励（保持但降低权重） =====
-            "orientation": -2.5e-7,              # 姿态稳定（降低权重）
+            "orientation": -2.5,              # 姿态稳定（降低权重）
             "lin_vel_z": -2.0,              # 垂直速度惩罚
             "ang_vel_xy": -0.05,            # XY轴角速度惩罚
             "torques":   -0.0002,               # 扭矩惩罚
-            "dof_vel": -0,                  # 关节速度惩罚
+            "dof_vel": -5e-5,                  # 关节速度惩罚
             "dof_acc": -2.5e-7,                  # 关节加速度惩罚
-            "action_rate": -0.001,          # 动作变化率惩罚
-            "stand_still": -0,         # 站立惩罚
+            "action_rate": -0.01,          # 动作变化率惩罚
             
             # ===== 终止惩罚 =====
             "termination": -20.0,          # 终止惩罚
