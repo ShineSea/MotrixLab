@@ -34,7 +34,7 @@ class NoiseConfig:
 
 @dataclass
 class ControlConfig:
-    action_scale = 0.05  # action scale
+    action_scale = 0.25  # action scale
 
 
 @dataclass
@@ -136,7 +136,7 @@ class Go2FlatEnvCfg(EnvCfg):
     render_spacing: float = 0.0
     model_file: str = model_file
     reset_noise_scale: float = 0.01
-    max_episode_seconds: float = 40
+    max_episode_seconds: float = 20
     sim_dt: float = 0.01
     ctrl_dt: float = 0.01
     reset_yaw_scale: float = 0.1
